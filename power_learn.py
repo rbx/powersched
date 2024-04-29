@@ -28,18 +28,18 @@ if model_files:
 else:
     model = PPO('MultiInputPolicy', env, verbose=1, tensorboard_log=logdir)
 
-# Overall architecture of the policy network
-print("model.policy:")
-print(model.policy)
+# # Overall architecture of the policy network
+# print("model.policy:")
+# print(model.policy)
 
-# Detailed architecture, including layers:
-print("model.policy.net_arch:")
-print(model.policy.net_arch)
+# # Detailed architecture, including layers:
+# print("model.policy.net_arch:")
+# print(model.policy.net_arch)
 
-# Parameters (weights and biases)
-print("name, param in model.policy.named_parameters:")
-for name, param in model.policy.named_parameters():
-    print(name, param.shape)
+# # Parameters (weights and biases)
+# print("name, param in model.policy.named_parameters:")
+# for name, param in model.policy.named_parameters():
+#     print(name, param.shape)
 
 TIMESTEPS = 10000
 iters = 0
@@ -53,8 +53,17 @@ if latest_model_file:
         # If the filename doesn't follow expected format, default to 0
         iters = 0
 
-while True:
-    print(f"iter {iters}")
-    iters += 1
-    model.learn(total_timesteps = TIMESTEPS, reset_num_timesteps = False, tb_log_name = f"PPO")
-    model.save(f"{models_dir}/{TIMESTEPS * iters}")
+try:
+    while True:
+        print(f"iter {iters}")
+        iters += 1
+        model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name=f"PPO")
+        model.save(f"{models_dir}/{TIMESTEPS * iters}.zip")
+except KeyboardInterrupt:
+    print("Training interrupted by user.")
+    # print("Training interrupted by user, attempting to save the current model...")
+    # model.save(f"{models_dir}/interrupted_{TIMESTEPS * iters}.zip")
+    # print("Model saved successfully.")
+finally:
+    print("Exiting training...")
+    env.close()

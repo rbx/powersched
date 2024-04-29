@@ -1,9 +1,12 @@
+import time
+
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 
 MAX_NODES = 100  # Maximum number of nodes
-MAX_QUEUE_SIZE = 10  # Maximum number of jobs in the queue
+MAX_QUEUE_SIZE = 20  # Maximum number of jobs in the queue
+MAX_CHANGE = 10
 
 class ComputeClusterEnv(gym.Env):
     """An toy environment for scheduling compute jobs based on electricity price predictions."""
@@ -14,9 +17,12 @@ class ComputeClusterEnv(gym.Env):
         super().__init__()
 
         self.hours_passed = 0
+        self.weeks_passed = 0
 
-        # actions: - change number of available nodes: 0: decrease, 1: maintain, 2: increase
-        self.action_space = spaces.Discrete(3)
+        # actions: - change number of available nodes:
+        #   direction: 0: decrease, 1: maintain, 2: increase
+        #   num nodes: 0-9 (+1ed in the action)
+        self.action_space = spaces.MultiDiscrete([3, MAX_CHANGE])
 
         # - predicted allocation
         # - predicted green/conventional ratio
@@ -71,6 +77,8 @@ class ComputeClusterEnv(gym.Env):
 
         self.hours_passed = 0
 
+        self.weekly_savings = 0
+
         self.state = {
             'nodes': initial_nodes_state,
             'job_queue': initial_job_queue,
@@ -80,33 +88,55 @@ class ComputeClusterEnv(gym.Env):
         return self.state, {}
 
     def step(self, action):
-        self.hours_passed += 1
+        print(f"weeks_passed: {self.weeks_passed}, hours_passed: {self.hours_passed}")
 
         new_price = self.state['predicted_prices'][0] + np.random.uniform(low=-10.0, high=10.0)
+        current_price = self.state['predicted_prices'][0]
         self.state['predicted_prices'] = np.roll(self.state['predicted_prices'], -1)
         self.state['predicted_prices'][-1] = new_price
 
+        print("predicted_prices: ", np.array2string(self.state['predicted_prices'], separator=" ", max_line_width=np.inf, formatter={'float_kind': lambda x: "{:05.2f}".format(x)}))
+
         # Update job queue with 0-1 new jobs. If queue is full, do nothing
-        new_jobs_count = np.random.randint(0, 1)
-        new_jobs_duration = np.random.randint(1, 10, size=new_jobs_count)
+        new_jobs_count = np.random.randint(0, 2)
+        new_jobs_durations = np.random.randint(1, 11, size=new_jobs_count)
         if new_jobs_count > 0:
-            for i, job_duration in enumerate(self.state['job_queue']):
-                if job_duration == 0:
-                    self.state['job_queue'][i] = new_jobs_duration
+            for i, new_job_duration in enumerate(new_jobs_durations):
+                for j, queue_job_duration in enumerate(self.state['job_queue']):
+                    if queue_job_duration == 0:
+                        self.state['job_queue'][j] = new_jobs_durations[i]
+                        break
+
+        print(f"new_jobs_durations: {new_jobs_durations}")
+        print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
+        print("job_queue: ", np.array2string(self.state['job_queue'], separator=" ", max_line_width=np.inf))
+
+        action_type, action_magnitude = action # Unpack the action array
+        action_magnitude += 1
+        print(f"action_type: {action_type}, action_magnitude: {action_magnitude}")
 
         # Adjust nodes based on action
-        if action == 0: # Decrease number of available nodes
+        if action_type == 0: # Decrease number of available nodes
+            print(f">>> turning OFF up to {action_magnitude} nodes")
+            nodes_modified = 0
             for i in range(len(self.state['nodes'])):
                 if self.state['nodes'][i] == 0: # Find the first available node and turn it off
                     self.state['nodes'][i] = -1
-                    break
-        if action == 1:
+                    nodes_modified += 1
+                    if nodes_modified == action_magnitude:  # Stop if enough nodes have been modified
+                        break
+        elif action_type == 1:
+            print(f">>> Not touching any nodes")
             pass # maintain node count = do nothing
-        elif action == 2: # Increase number of available nodes
+        elif action_type == 2: # Increase number of available nodes
+            print(f">>> turning ON up to {action_magnitude} nodes")
+            nodes_modified = 0
             for i in range(len(self.state['nodes'])):
                 if self.state['nodes'][i] == -1: # Find the first off node and make it available
                     self.state['nodes'][i] = 0
-                    break
+                    nodes_modified += 1
+                    if nodes_modified == action_magnitude:  # Stop if enough nodes have been modified
+                        break
 
         # Processing jobs and updating node states
         for i, job_duration in enumerate(self.state['job_queue']):
@@ -130,10 +160,11 @@ class ComputeClusterEnv(gym.Env):
 
         # Initialize reward components
         REWARD_TURN_OFF_NODE = 0.1  # Reward for each node turned off
-        PENALTY_UNPROCESSED_JOB = -1  # Penalty for each unprocessed job in the queue
+        PENALTY_UNPROCESSED_JOB = -10  # Penalty for each unprocessed job in the queue
         BONUS_PROCESSED_JOB = 1  # Bonus for each processed job
 
         # Calculate the number of off nodes for the reward
+        num_on_nodes = np.sum(self.state['nodes'] > -1)
         num_off_nodes = np.sum(self.state['nodes'] == -1)
 
         # Calculate the number of unprocessed jobs for the penalty
@@ -143,15 +174,39 @@ class ComputeClusterEnv(gym.Env):
         # Assuming we track processed jobs within this step
         num_processed_jobs = new_jobs_count - num_unprocessed_jobs
 
+        print(f"num_off_nodes: {num_on_nodes}")
+        print(f"num_off_nodes: {num_off_nodes}")
+        print(f"num_unprocessed_jobs: {num_unprocessed_jobs}")
+        print(f"num_processed_jobs: {num_processed_jobs}")
+
         # Calculate the reward
         reward = 0
-        reward += REWARD_TURN_OFF_NODE * num_off_nodes * new_price
-        reward += PENALTY_UNPROCESSED_JOB * num_unprocessed_jobs
+        reward += REWARD_TURN_OFF_NODE * num_off_nodes# * current_price_price
+        if num_off_nodes > 0:
+            reward += PENALTY_UNPROCESSED_JOB * num_unprocessed_jobs
         reward += BONUS_PROCESSED_JOB * num_processed_jobs
+
+        current_daily_cost = num_on_nodes * current_price
+        maximum_daily_cost = MAX_NODES * current_price
+        current_saving = maximum_daily_cost - current_daily_cost
+        self.weekly_savings += current_saving
+        print(f"$$ current_daily_cost: {current_daily_cost}")
+        print(f"$$ maximum_daily_cost: {maximum_daily_cost}")
+        print(f"$$ current_saving: {current_saving}")
+        print(f"$$ weekly_savings: {self.weekly_savings}")
 
         truncated = False
         terminated = False
-        if self.hours_passed > 168:
+        self.hours_passed += 1
+        if self.hours_passed >= 168:
+            reward += self.weekly_savings / 10
+            self.weeks_passed += 1
             terminated = True
+
+        print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
+        print("job_queue: ", np.array2string(self.state['job_queue'], separator=" ", max_line_width=np.inf))
+        print(f"reward: {reward} ({REWARD_TURN_OFF_NODE * num_off_nodes} + {PENALTY_UNPROCESSED_JOB * num_unprocessed_jobs} + {BONUS_PROCESSED_JOB * num_processed_jobs})\n")
+
+        time.sleep(1)
 
         return self.state, reward, terminated, truncated, {}
