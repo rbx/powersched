@@ -12,11 +12,20 @@ MAX_JOB_DURATION = 24 # job runs at most 24h (example)
 class ComputeClusterEnv(gym.Env):
     """An toy environment for scheduling compute jobs based on electricity price predictions."""
 
-    metadata = { 'render.modes': ['human'] }
+    metadata = { 'render.modes': ['human', 'none'] }
 
-    def __init__(self):
+    def render(self, mode='human'):
+        self.render_mode = mode
+
+    def env_print(self, *args):
+        """Prints only if the render mode is 'human'."""
+        if self.render_mode == 'human':
+            print(*args)
+
+    def __init__(self, render_mode='none'):
         super().__init__()
 
+        self.render_mode = render_mode
         self.hours_passed = 0
         self.weeks_passed = 0
 
@@ -52,7 +61,6 @@ class ComputeClusterEnv(gym.Env):
             ),
         })
 
-
     def reset(self, seed = None, options = None):
         # Initialize all nodes to be 'online but free' (0)
         initial_nodes_state = np.zeros(MAX_NODES, dtype=np.int32)
@@ -85,14 +93,14 @@ class ComputeClusterEnv(gym.Env):
         return self.state, {}
 
     def step(self, action):
-        print(f"weeks_passed: {self.weeks_passed}, hours_passed: {self.hours_passed}")
+        self.env_print(f"weeks_passed: {self.weeks_passed}, hours_passed: {self.hours_passed}")
 
         new_price = self.state['predicted_prices'][0] + np.random.uniform(low=-10.0, high=10.0)
         current_price = self.state['predicted_prices'][0]
         self.state['predicted_prices'] = np.roll(self.state['predicted_prices'], -1)
         self.state['predicted_prices'][-1] = new_price
 
-        print("predicted_prices: ", np.array2string(self.state['predicted_prices'], separator=" ", max_line_width=np.inf, formatter={'float_kind': lambda x: "{:05.2f}".format(x)}))
+        self.env_print("predicted_prices: ", np.array2string(self.state['predicted_prices'], separator=" ", max_line_width=np.inf, formatter={'float_kind': lambda x: "{:05.2f}".format(x)}))
 
         # Update job queue with 0-1 new jobs. If queue is full, do nothing
         new_jobs_count = np.random.randint(0, 2)
@@ -104,16 +112,16 @@ class ComputeClusterEnv(gym.Env):
                         self.state['job_queue'][j] = [new_job_duration, 0]
                         break
 
-        print(f"new_jobs_durations: {new_jobs_durations}")
-        print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
-        print("job_queue: ", ' '.join(['[{}]'.format(' '.join(map(str, pair))) for pair in self.state['job_queue']]))
+        self.env_print(f"new_jobs_durations: {new_jobs_durations}")
+        self.env_print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
+        self.env_print("job_queue: ", ' '.join(['[{}]'.format(' '.join(map(str, pair))) for pair in self.state['job_queue']]))
 
         action_type, action_magnitude = action # Unpack the action array
         action_magnitude += 1
 
         # Adjust nodes based on action
         if action_type == 0: # Decrease number of available nodes
-            print(f">>> turning OFF up to {action_magnitude} nodes (action_type: {action_type}, action_magnitude: {action_magnitude})")
+            self.env_print(f">>> turning OFF up to {action_magnitude} nodes (action_type: {action_type}, action_magnitude: {action_magnitude})")
             nodes_modified = 0
             for i in range(len(self.state['nodes'])):
                 if self.state['nodes'][i] == 0: # Find the first available node and turn it off
@@ -122,10 +130,10 @@ class ComputeClusterEnv(gym.Env):
                     if nodes_modified == action_magnitude:  # Stop if enough nodes have been modified
                         break
         elif action_type == 1:
-            print(f">>> Not touching any nodes (action_type: {action_type}, action_magnitude: {action_magnitude})")
+            self.env_print(f">>> Not touching any nodes (action_type: {action_type}, action_magnitude: {action_magnitude})")
             pass # maintain node count = do nothing
         elif action_type == 2: # Increase number of available nodes
-            print(f">>> turning ON up to {action_magnitude} nodes (action_type: {action_type}, action_magnitude: {action_magnitude})")
+            self.env_print(f">>> turning ON up to {action_magnitude} nodes (action_type: {action_type}, action_magnitude: {action_magnitude})")
             nodes_modified = 0
             for i in range(len(self.state['nodes'])):
                 if self.state['nodes'][i] == -1: # Find the first off node and make it available
@@ -161,9 +169,9 @@ class ComputeClusterEnv(gym.Env):
         num_unprocessed_jobs = np.sum(self.state['job_queue'] > 0)
         num_processed_jobs = new_jobs_count - num_unprocessed_jobs
 
-        print(f"num_on_nodes: {num_on_nodes}, num_off_nodes: {num_off_nodes}")
-        print(f"num_unprocessed_jobs: {num_unprocessed_jobs}")
-        print(f"num_processed_jobs: {num_processed_jobs}")
+        self.env_print(f"num_on_nodes: {num_on_nodes}, num_off_nodes: {num_off_nodes}")
+        self.env_print(f"num_unprocessed_jobs: {num_unprocessed_jobs}")
+        self.env_print(f"num_processed_jobs: {num_processed_jobs}")
 
         # rewards:
         # - cost savings (due to disabled nodes)
@@ -182,7 +190,7 @@ class ComputeClusterEnv(gym.Env):
         # Calculate the reward
         reward = 0
         reward += REWARD_TURN_OFF_NODE * num_off_nodes * (1 / current_price * average_future_price)
-        print(f"$$ nuanced: {REWARD_TURN_OFF_NODE * num_off_nodes * (1 / current_price * average_future_price)}")
+        self.env_print(f"$$ nuanced: {REWARD_TURN_OFF_NODE * num_off_nodes * (1 / current_price * average_future_price)}")
 
         delayed_penalty = 0
         # Apply penalties and rewards based on job queue and processing
@@ -192,37 +200,37 @@ class ComputeClusterEnv(gym.Env):
                 delayed_penalty += PENALTY_WAITING_JOB * job_age  # Penalize for each hour a job is delayed
 
         reward += delayed_penalty
-        print(f"$$ delayed_penalty: {delayed_penalty}")
+        self.env_print(f"$$ delayed_penalty: {delayed_penalty}")
 
         # Reward for processing jobs at good times
         if current_price < average_future_price:
             reward += REWARD_PROCESSED_JOB * num_processed_jobs
-            print(f"$$ good times: {REWARD_PROCESSED_JOB * num_processed_jobs}")
+            self.env_print(f"$$ good times: {REWARD_PROCESSED_JOB * num_processed_jobs}")
 
         # Penalty only when there are turned off nodes
         if num_off_nodes > 0:
             reward += PENALTY_UNPROCESSED_JOB * num_unprocessed_jobs
-            print(f"$$ off nodes ({num_off_nodes}): {PENALTY_UNPROCESSED_JOB * num_unprocessed_jobs}")
+            self.env_print(f"$$ off nodes ({num_off_nodes}): {PENALTY_UNPROCESSED_JOB * num_unprocessed_jobs}")
 
         current_daily_cost = num_on_nodes * current_price
         maximum_daily_cost = MAX_NODES * current_price
         current_saving = maximum_daily_cost - current_daily_cost
         self.weekly_savings += current_saving
-        print(f"$$ current_daily_cost: {current_daily_cost}, current_saving: {current_saving}")
-        print(f"$$ maximum_daily_cost: {maximum_daily_cost}, weekly_savings: {self.weekly_savings}")
+        self.env_print(f"$$ current_daily_cost: {current_daily_cost}, current_saving: {current_saving}")
+        self.env_print(f"$$ maximum_daily_cost: {maximum_daily_cost}, weekly_savings: {self.weekly_savings}")
 
         truncated = False
         terminated = False
         self.hours_passed += 1
         if self.hours_passed >= 168:
             reward += self.weekly_savings / 10
-            print(f"$$$$$ weekly_savings / 10: {self.weekly_savings / 10}")
+            self.env_print(f"$$$$$ weekly_savings / 10: {self.weekly_savings / 10}")
             self.weeks_passed += 1
             terminated = True
 
-        print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
-        print("job_queue: ", ' '.join(['[{}]'.format(' '.join(map(str, pair))) for pair in self.state['job_queue']]))
-        print(f"total reward: {reward}\n")
+        self.env_print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
+        self.env_print("job_queue: ", ' '.join(['[{}]'.format(' '.join(map(str, pair))) for pair in self.state['job_queue']]))
+        self.env_print(f"total reward: {reward}\n")
 
         time.sleep(1)
 

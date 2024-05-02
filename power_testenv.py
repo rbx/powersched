@@ -1,6 +1,7 @@
 from power_env import ComputeClusterEnv
 
 env = ComputeClusterEnv()
+env.render()
 episodes = 1
 
 for episode in range(episodes):
