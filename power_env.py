@@ -73,11 +73,7 @@ class ComputeClusterEnv(gym.Env):
             # Ensure prices do not go negative, temporary
             initial_predicted_prices[i] = max(0.0, initial_predicted_prices[i])
 
-        # Convert to float32 if not already
-        initial_predicted_prices = initial_predicted_prices.astype(np.float32)
-
         self.hours_passed = 0
-
         self.weekly_savings = 0
 
         self.state = {
@@ -114,11 +110,10 @@ class ComputeClusterEnv(gym.Env):
 
         action_type, action_magnitude = action # Unpack the action array
         action_magnitude += 1
-        print(f"action_type: {action_type}, action_magnitude: {action_magnitude}")
 
         # Adjust nodes based on action
         if action_type == 0: # Decrease number of available nodes
-            print(f">>> turning OFF up to {action_magnitude} nodes")
+            print(f">>> turning OFF up to {action_magnitude} nodes (action_type: {action_type}, action_magnitude: {action_magnitude})")
             nodes_modified = 0
             for i in range(len(self.state['nodes'])):
                 if self.state['nodes'][i] == 0: # Find the first available node and turn it off
@@ -127,10 +122,10 @@ class ComputeClusterEnv(gym.Env):
                     if nodes_modified == action_magnitude:  # Stop if enough nodes have been modified
                         break
         elif action_type == 1:
-            print(f">>> Not touching any nodes")
+            print(f">>> Not touching any nodes (action_type: {action_type}, action_magnitude: {action_magnitude})")
             pass # maintain node count = do nothing
         elif action_type == 2: # Increase number of available nodes
-            print(f">>> turning ON up to {action_magnitude} nodes")
+            print(f">>> turning ON up to {action_magnitude} nodes (action_type: {action_type}, action_magnitude: {action_magnitude})")
             nodes_modified = 0
             for i in range(len(self.state['nodes'])):
                 if self.state['nodes'][i] == -1: # Find the first off node and make it available
@@ -160,32 +155,24 @@ class ComputeClusterEnv(gym.Env):
             if node_state > 0:  # If node is booked
                 self.state['nodes'][i] -= 1  # Decrement the booked time
 
+        num_on_nodes = np.sum(self.state['nodes'] > -1)
+        num_off_nodes = np.sum(self.state['nodes'] == -1)
+        num_unprocessed_jobs = np.sum(self.state['job_queue'] > 0)
+        num_processed_jobs = new_jobs_count - num_unprocessed_jobs
+
         # rewards:
         # - cost savings (due to disabled nodes)
         # - reduced conventional energy usage
         # - cost of systems doing nothing (should not waste available resources)
         # - job queue advancement
 
+        print(f"num_on_nodes: {num_on_nodes}, num_off_nodes: {num_off_nodes}")
+        print(f"num_processed_jobs: {num_processed_jobs}, num_unprocessed_jobs: {num_unprocessed_jobs}")
+
         # Initialize reward components
         REWARD_TURN_OFF_NODE = 0.1  # Reward for each node turned off
         PENALTY_UNPROCESSED_JOB = -10  # Penalty for each unprocessed job in the queue
         BONUS_PROCESSED_JOB = 1  # Bonus for each processed job
-
-        # Calculate the number of off nodes for the reward
-        num_on_nodes = np.sum(self.state['nodes'] > -1)
-        num_off_nodes = np.sum(self.state['nodes'] == -1)
-
-        # Calculate the number of unprocessed jobs for the penalty
-        num_unprocessed_jobs = np.sum(self.state['job_queue'] > 0)
-
-        # Calculate the number of processed jobs for the bonus
-        # Assuming we track processed jobs within this step
-        num_processed_jobs = new_jobs_count - num_unprocessed_jobs
-
-        print(f"num_off_nodes: {num_on_nodes}")
-        print(f"num_off_nodes: {num_off_nodes}")
-        print(f"num_unprocessed_jobs: {num_unprocessed_jobs}")
-        print(f"num_processed_jobs: {num_processed_jobs}")
 
         # Calculate the reward
         reward = 0
@@ -198,10 +185,8 @@ class ComputeClusterEnv(gym.Env):
         maximum_daily_cost = MAX_NODES * current_price
         current_saving = maximum_daily_cost - current_daily_cost
         self.weekly_savings += current_saving
-        print(f"$$ current_daily_cost: {current_daily_cost}")
-        print(f"$$ maximum_daily_cost: {maximum_daily_cost}")
-        print(f"$$ current_saving: {current_saving}")
-        print(f"$$ weekly_savings: {self.weekly_savings}")
+        print(f"$$ current_daily_cost: {current_daily_cost}, current_saving: {current_saving}")
+        print(f"$$ maximum_daily_cost: {maximum_daily_cost}, weekly_savings: {self.weekly_savings}")
 
         truncated = False
         terminated = False
