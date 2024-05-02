@@ -6,7 +6,7 @@ import numpy as np
 
 MAX_NODES = 100  # Maximum number of nodes
 MAX_QUEUE_SIZE = 20  # Maximum number of jobs in the queue
-MAX_CHANGE = 10
+MAX_CHANGE = 100
 MAX_JOB_DURATION = 24 # job runs at most 24h (example)
 
 class ComputeClusterEnv(gym.Env):
@@ -143,6 +143,7 @@ class ComputeClusterEnv(gym.Env):
                     if node_state == 0:  # If node is free
                         self.state['nodes'][j] = job_duration  # Book the node for the duration of the job
                         self.state['job_queue'][i][0] = 0  # Set the duration of the job to 0, marking it as processed
+                        self.state['job_queue'][i][1] = 0  # ... and the age
                         job_launched = True
                         break
 
@@ -160,26 +161,48 @@ class ComputeClusterEnv(gym.Env):
         num_unprocessed_jobs = np.sum(self.state['job_queue'] > 0)
         num_processed_jobs = new_jobs_count - num_unprocessed_jobs
 
+        print(f"num_on_nodes: {num_on_nodes}, num_off_nodes: {num_off_nodes}")
+        print(f"num_unprocessed_jobs: {num_unprocessed_jobs}")
+        print(f"num_processed_jobs: {num_processed_jobs}")
+
         # rewards:
         # - cost savings (due to disabled nodes)
         # - reduced conventional energy usage
         # - cost of systems doing nothing (should not waste available resources)
         # - job queue advancement
 
-        print(f"num_on_nodes: {num_on_nodes}, num_off_nodes: {num_off_nodes}")
-        print(f"num_processed_jobs: {num_processed_jobs}, num_unprocessed_jobs: {num_unprocessed_jobs}")
-
-        # Initialize reward components
+        # Reward components
         REWARD_TURN_OFF_NODE = 0.1  # Reward for each node turned off
-        PENALTY_UNPROCESSED_JOB = -10  # Penalty for each unprocessed job in the queue
-        BONUS_PROCESSED_JOB = 1  # Bonus for each processed job
+        PENALTY_UNPROCESSED_JOB = -1  # Penalty for each unprocessed job in the queue
+        PENALTY_WAITING_JOB = -0.5  # Additional penalty for each hour a job is delayed
+        REWARD_PROCESSED_JOB = 1  # Reward for processing jobs under favorable prices
+
+        average_future_price = np.mean(self.state['predicted_prices'])
 
         # Calculate the reward
         reward = 0
-        reward += REWARD_TURN_OFF_NODE * num_off_nodes# * current_price_price
+        reward += REWARD_TURN_OFF_NODE * num_off_nodes * (1 / current_price * average_future_price)
+        print(f"$$ nuanced: {REWARD_TURN_OFF_NODE * num_off_nodes * (1 / current_price * average_future_price)}")
+
+        delayed_penalty = 0
+        # Apply penalties and rewards based on job queue and processing
+        for job in self.state['job_queue']:
+            job_duration, job_age = job
+            if job_duration > 0:
+                delayed_penalty += PENALTY_WAITING_JOB * job_age  # Penalize for each hour a job is delayed
+
+        reward += delayed_penalty
+        print(f"$$ delayed_penalty: {delayed_penalty}")
+
+        # Reward for processing jobs at good times
+        if current_price < average_future_price:
+            reward += REWARD_PROCESSED_JOB * num_processed_jobs
+            print(f"$$ good times: {REWARD_PROCESSED_JOB * num_processed_jobs}")
+
+        # Penalty only when there are turned off nodes
         if num_off_nodes > 0:
             reward += PENALTY_UNPROCESSED_JOB * num_unprocessed_jobs
-        reward += BONUS_PROCESSED_JOB * num_processed_jobs
+            print(f"$$ off nodes ({num_off_nodes}): {PENALTY_UNPROCESSED_JOB * num_unprocessed_jobs}")
 
         current_daily_cost = num_on_nodes * current_price
         maximum_daily_cost = MAX_NODES * current_price
@@ -193,12 +216,13 @@ class ComputeClusterEnv(gym.Env):
         self.hours_passed += 1
         if self.hours_passed >= 168:
             reward += self.weekly_savings / 10
+            print(f"$$$$$ weekly_savings / 10: {self.weekly_savings / 10}")
             self.weeks_passed += 1
             terminated = True
 
         print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
         print("job_queue: ", ' '.join(['[{}]'.format(' '.join(map(str, pair))) for pair in self.state['job_queue']]))
-        print(f"reward: {reward} ({REWARD_TURN_OFF_NODE * num_off_nodes} + {PENALTY_UNPROCESSED_JOB * num_unprocessed_jobs} + {BONUS_PROCESSED_JOB * num_processed_jobs})\n")
+        print(f"total reward: {reward}\n")
 
         time.sleep(1)
 
