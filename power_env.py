@@ -143,6 +143,8 @@ class ComputeClusterEnv(gym.Env):
                     if nodes_modified == action_magnitude:  # Stop if enough nodes have been modified
                         break
 
+        num_processed_jobs = 0
+
         for i in range(len(self.state['job_queue'])):
             job_duration = self.state['job_queue'][i][0]
             if job_duration > 0:  # If there's a job to process
@@ -153,6 +155,7 @@ class ComputeClusterEnv(gym.Env):
                         self.state['nodes'][j] = job_duration  # Book the node for the duration of the job
                         self.state['job_queue'][i][0] = 0  # Set the duration of the job to 0, marking it as processed
                         self.state['job_queue'][i][1] = 0  # ... and the age
+                        num_processed_jobs += 1
                         job_launched = True
                         break
 
@@ -168,7 +171,6 @@ class ComputeClusterEnv(gym.Env):
         num_on_nodes = np.sum(self.state['nodes'] > -1)
         num_off_nodes = np.sum(self.state['nodes'] == -1)
         num_unprocessed_jobs = np.sum(self.state['job_queue'] > 0)
-        num_processed_jobs = new_jobs_count - num_unprocessed_jobs
 
         self.env_print(f"num_on_nodes: {num_on_nodes}, num_off_nodes: {num_off_nodes}")
         self.env_print(f"num_processed_jobs: {num_processed_jobs}, num_unprocessed_jobs: {num_unprocessed_jobs}")
@@ -225,8 +227,9 @@ class ComputeClusterEnv(gym.Env):
         terminated = False
         self.hour += 1
         if self.hour >= 168:
-            reward += self.weekly_savings / 10000
-            self.env_print(f"$$$$$ weekly_savings / 10000: {self.weekly_savings / 10000}")
+            weekly_reward = self.weekly_savings / 10000
+            reward += weekly_reward
+            self.env_print(f"$$$$$ weekly_reward: {weekly_reward}")
             self.week += 1
             terminated = True
 
