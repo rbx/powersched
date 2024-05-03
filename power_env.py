@@ -8,6 +8,7 @@ MAX_NODES = 100  # Maximum number of nodes
 MAX_QUEUE_SIZE = 20  # Maximum number of jobs in the queue
 MAX_CHANGE = 100
 MAX_JOB_DURATION = 24 # job runs at most 24h (example)
+MAX_JOB_AGE = 168 # job waits maximum a week
 
 class ComputeClusterEnv(gym.Env):
     """An toy environment for scheduling compute jobs based on electricity price predictions."""
@@ -26,8 +27,8 @@ class ComputeClusterEnv(gym.Env):
         super().__init__()
 
         self.render_mode = render_mode
-        self.hours_passed = 0
-        self.weeks_passed = 0
+        self.hour = 0
+        self.week = 0
 
         # actions: - change number of available nodes:
         #   direction: 0: decrease, 1: maintain, 2: increase
@@ -41,14 +42,14 @@ class ComputeClusterEnv(gym.Env):
             # - nodes: [state (available, active, off), # of hours scheduled]
             'nodes': spaces.Box(
                 low=-1, # -1: off, 0: available, >0: booked for n hours
-                high=24, # 24h max
+                high=MAX_JOB_DURATION, # 24h max
                 shape=(MAX_NODES,),  # Correct shape to (100,)
                 dtype=np.int32
             ),
             # job queue: [job duration]
             'job_queue': spaces.Box(
                 low=np.zeros((MAX_QUEUE_SIZE, 2), dtype=np.int32),  # low array with shape (MAX_QUEUE_SIZE, 2)
-                high=np.array([[MAX_JOB_DURATION, 168]] * MAX_QUEUE_SIZE, dtype=np.int32),  # high array with repeated rows
+                high=np.array([[MAX_JOB_DURATION, MAX_JOB_AGE]] * MAX_QUEUE_SIZE, dtype=np.int32),  # high array with repeated rows
                 shape=(MAX_QUEUE_SIZE, 2),  # Each job is a [duration, age]
                 dtype=np.int32
             ),
@@ -79,9 +80,9 @@ class ComputeClusterEnv(gym.Env):
             price_change = np.random.uniform(low=-10.0, high=10.0)
             initial_predicted_prices[i] = initial_predicted_prices[i-1] + price_change
             # Ensure prices do not go negative, temporary
-            initial_predicted_prices[i] = max(0.01, initial_predicted_prices[i])
+            initial_predicted_prices[i] = max(1.0, initial_predicted_prices[i])
 
-        self.hours_passed = 0
+        self.hour = 0
         self.weekly_savings = 0
 
         self.state = {
@@ -93,9 +94,9 @@ class ComputeClusterEnv(gym.Env):
         return self.state, {}
 
     def step(self, action):
-        self.env_print(f"weeks_passed: {self.weeks_passed}, hours_passed: {self.hours_passed}")
+        self.env_print(f"week: {self.week}, hour: {self.hour}")
 
-        new_price = self.state['predicted_prices'][0] + np.random.uniform(low=-10.0, high=10.0)
+        new_price = max(1.00, self.state['predicted_prices'][0] + np.random.uniform(low=-10.0, high=10.0))
         current_price = self.state['predicted_prices'][0]
         self.state['predicted_prices'] = np.roll(self.state['predicted_prices'], -1)
         self.state['predicted_prices'][-1] = new_price
@@ -170,8 +171,7 @@ class ComputeClusterEnv(gym.Env):
         num_processed_jobs = new_jobs_count - num_unprocessed_jobs
 
         self.env_print(f"num_on_nodes: {num_on_nodes}, num_off_nodes: {num_off_nodes}")
-        self.env_print(f"num_unprocessed_jobs: {num_unprocessed_jobs}")
-        self.env_print(f"num_processed_jobs: {num_processed_jobs}")
+        self.env_print(f"num_processed_jobs: {num_processed_jobs}, num_unprocessed_jobs: {num_unprocessed_jobs}")
 
         # rewards:
         # - cost savings (due to disabled nodes)
@@ -186,12 +186,13 @@ class ComputeClusterEnv(gym.Env):
         REWARD_PROCESSED_JOB = 1  # Reward for processing jobs under favorable prices
 
         average_future_price = np.mean(self.state['predicted_prices'])
+        self.env_print(f"$$ current_price: {current_price}")
+        self.env_print(f"$$ average_future_price: {average_future_price}")
 
         # Calculate the reward
         reward = 0
-        epsilon = 1e-8  # Small value to prevent division by zero
-        reward += REWARD_TURN_OFF_NODE * num_off_nodes * (1 / (current_price + epsilon) * average_future_price)
-        self.env_print(f"$$ nuanced: {REWARD_TURN_OFF_NODE * num_off_nodes * (1 / (current_price + epsilon) * average_future_price)}")
+        reward += REWARD_TURN_OFF_NODE * num_off_nodes * (1 / current_price * average_future_price)
+        self.env_print(f"$$ nuanced: {REWARD_TURN_OFF_NODE * num_off_nodes * (1 / current_price * average_future_price)} ({REWARD_TURN_OFF_NODE} * {num_off_nodes} * (1 / {current_price} * {average_future_price}))")
 
         delayed_penalty = 0
         # Apply penalties and rewards based on job queue and processing
@@ -222,11 +223,11 @@ class ComputeClusterEnv(gym.Env):
 
         truncated = False
         terminated = False
-        self.hours_passed += 1
-        if self.hours_passed >= 168:
-            reward += self.weekly_savings / 10
-            self.env_print(f"$$$$$ weekly_savings / 10: {self.weekly_savings / 10}")
-            self.weeks_passed += 1
+        self.hour += 1
+        if self.hour >= 168:
+            reward += self.weekly_savings / 10000
+            self.env_print(f"$$$$$ weekly_savings / 10000: {self.weekly_savings / 10000}")
+            self.week += 1
             terminated = True
 
         self.env_print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
