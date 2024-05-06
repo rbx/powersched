@@ -122,7 +122,7 @@ class ComputeClusterEnv(gym.Env):
 
         # Adjust nodes based on action
         if action_type == 0: # Decrease number of available nodes
-            self.env_print(f">>> turning OFF up to {action_magnitude} nodes (action_type: {action_type}, action_magnitude: {action_magnitude})")
+            self.env_print(f">>> turning OFF up to {action_magnitude} nodes")
             nodes_modified = 0
             for i in range(len(self.state['nodes'])):
                 if self.state['nodes'][i] == 0: # Find the first available node and turn it off
@@ -131,10 +131,10 @@ class ComputeClusterEnv(gym.Env):
                     if nodes_modified == action_magnitude:  # Stop if enough nodes have been modified
                         break
         elif action_type == 1:
-            self.env_print(f">>> Not touching any nodes (action_type: {action_type}, action_magnitude: {action_magnitude})")
+            self.env_print(f">>> Not touching any nodes")
             pass # maintain node count = do nothing
         elif action_type == 2: # Increase number of available nodes
-            self.env_print(f">>> turning ON up to {action_magnitude} nodes (action_type: {action_type}, action_magnitude: {action_magnitude})")
+            self.env_print(f">>> turning ON up to {action_magnitude} nodes")
             nodes_modified = 0
             for i in range(len(self.state['nodes'])):
                 if self.state['nodes'][i] == -1: # Find the first off node and make it available
@@ -144,7 +144,6 @@ class ComputeClusterEnv(gym.Env):
                         break
 
         num_processed_jobs = 0
-
         for i in range(len(self.state['job_queue'])):
             job_duration = self.state['job_queue'][i][0]
             if job_duration > 0:  # If there's a job to process
@@ -170,7 +169,7 @@ class ComputeClusterEnv(gym.Env):
 
         num_on_nodes = np.sum(self.state['nodes'] > -1)
         num_off_nodes = np.sum(self.state['nodes'] == -1)
-        num_unprocessed_jobs = np.sum(self.state['job_queue'] > 0)
+        num_unprocessed_jobs = np.sum(self.state['job_queue'][:, 0] > 0)
 
         self.env_print(f"num_on_nodes: {num_on_nodes}, num_off_nodes: {num_off_nodes}")
         self.env_print(f"num_processed_jobs: {num_processed_jobs}, num_unprocessed_jobs: {num_unprocessed_jobs}")
@@ -183,38 +182,34 @@ class ComputeClusterEnv(gym.Env):
 
         # Reward components
         REWARD_TURN_OFF_NODE = 0.1  # Reward for each node turned off
-        PENALTY_UNPROCESSED_JOB = -1  # Penalty for each unprocessed job in the queue
         PENALTY_WAITING_JOB = -0.5  # Additional penalty for each hour a job is delayed
-        REWARD_PROCESSED_JOB = 1  # Reward for processing jobs under favorable prices
+        REWARD_PROCESSED_JOB = 3  # Reward for processing jobs under favorable prices
 
         average_future_price = np.mean(self.state['predicted_prices'])
         self.env_print(f"$$ current_price: {current_price}")
         self.env_print(f"$$ average_future_price: {average_future_price}")
 
-        # Calculate the reward
         reward = 0
-        reward += REWARD_TURN_OFF_NODE * num_off_nodes * (1 / current_price * average_future_price)
-        self.env_print(f"$$ nuanced: {REWARD_TURN_OFF_NODE * num_off_nodes * (1 / current_price * average_future_price)} ({REWARD_TURN_OFF_NODE} * {num_off_nodes} * (1 / {current_price} * {average_future_price}))")
+        # 1. increase reward for each turned off node, more if the current price is higher than average
+        turned_off_reward = REWARD_TURN_OFF_NODE * num_off_nodes * (1 / average_future_price * current_price)
+        reward += turned_off_reward
+        self.env_print(f"$$ turned_off_reward: {turned_off_reward} ({REWARD_TURN_OFF_NODE} * {num_off_nodes} * (1 / {average_future_price} * {current_price}))")
 
+        # 2. decrease reward for delayed jobs, greater if they are older. but only if there are turned off nodes
         delayed_penalty = 0
-        # Apply penalties and rewards based on job queue and processing
-        for job in self.state['job_queue']:
-            job_duration, job_age = job
-            if job_duration > 0:
-                delayed_penalty += PENALTY_WAITING_JOB * job_age  # Penalize for each hour a job is delayed
-
+        if num_off_nodes > 0:
+            for job in self.state['job_queue']:
+                job_duration, job_age = job
+                if job_duration > 0:
+                    delayed_penalty += PENALTY_WAITING_JOB * job_age  # Penalize for each hour a job is delayed
         reward += delayed_penalty
         self.env_print(f"$$ delayed_penalty: {delayed_penalty}")
 
-        # Reward for processing jobs at good times
+        # 3. increase reward if jobs were scheduled in this step and the current price is below average
         if current_price < average_future_price:
-            reward += REWARD_PROCESSED_JOB * num_processed_jobs
-            self.env_print(f"$$ good times: {REWARD_PROCESSED_JOB * num_processed_jobs}")
-
-        # Penalty only when there are turned off nodes
-        if num_off_nodes > 0:
-            reward += PENALTY_UNPROCESSED_JOB * num_unprocessed_jobs
-            self.env_print(f"$$ off nodes ({num_off_nodes}): {PENALTY_UNPROCESSED_JOB * num_unprocessed_jobs}")
+            processed_during_good_price = REWARD_PROCESSED_JOB * num_processed_jobs
+            reward += processed_during_good_price
+            self.env_print(f"$$ processed during favorable price: {processed_during_good_price}")
 
         current_daily_cost = num_on_nodes * current_price
         maximum_daily_cost = MAX_NODES * current_price
