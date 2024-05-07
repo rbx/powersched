@@ -53,8 +53,8 @@ class ComputeClusterEnv(gym.Env):
                 shape=(MAX_NODES,),  # Correct shape to (100,)
                 dtype=np.int32
             ),
-            # job queue: [job duration]
-            'job_queue': spaces.Box(
+            # job queue: [job duration, job age]
+            'job_queue': spaces.Box( # TODO: flatten this to 1D
                 low=np.zeros((MAX_QUEUE_SIZE, 2), dtype=np.int32),  # low array with shape (MAX_QUEUE_SIZE, 2)
                 high=np.array([[MAX_JOB_DURATION, MAX_JOB_AGE]] * MAX_QUEUE_SIZE, dtype=np.int32),  # high array with repeated rows
                 shape=(MAX_QUEUE_SIZE, 2),  # Each job is a [duration, age]
