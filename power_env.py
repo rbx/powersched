@@ -4,6 +4,8 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 
+import matplotlib.pyplot as plt
+
 MAX_NODES = 100  # Maximum number of nodes
 MAX_QUEUE_SIZE = 20  # Maximum number of jobs in the queue
 MAX_CHANGE = 100
@@ -29,6 +31,11 @@ class ComputeClusterEnv(gym.Env):
         self.render_mode = render_mode
         self.hour = 0
         self.week = 0
+
+        self.on_nodes = []
+        self.used_nodes = []
+        self.job_queue_sizes = []
+        self.prices = []
 
         # actions: - change number of available nodes:
         #   direction: 0: decrease, 1: maintain, 2: increase
@@ -84,6 +91,11 @@ class ComputeClusterEnv(gym.Env):
 
         self.hour = 0
         self.weekly_savings = 0
+
+        self.on_nodes = []
+        self.used_nodes = []
+        self.job_queue_sizes = []
+        self.prices = []
 
         self.state = {
             'nodes': initial_nodes_state,
@@ -167,11 +179,18 @@ class ComputeClusterEnv(gym.Env):
             if node_state > 0:  # If node is booked
                 self.state['nodes'][i] -= 1  # Decrement the booked time
 
+        num_used_nodes = np.sum(self.state['nodes'] > 0)
         num_on_nodes = np.sum(self.state['nodes'] > -1)
         num_off_nodes = np.sum(self.state['nodes'] == -1)
         num_unprocessed_jobs = np.sum(self.state['job_queue'][:, 0] > 0)
 
-        self.env_print(f"num_on_nodes: {num_on_nodes}, num_off_nodes: {num_off_nodes}")
+        # update stats
+        self.on_nodes.append(num_on_nodes)
+        self.used_nodes.append(num_used_nodes)
+        self.job_queue_sizes.append(num_unprocessed_jobs)
+        self.prices.append(current_price)
+
+        self.env_print(f"num_on_nodes: {num_on_nodes}, num_off_nodes: {num_off_nodes}, num_used_nodes: {num_used_nodes}")
         self.env_print(f"num_processed_jobs: {num_processed_jobs}, num_unprocessed_jobs: {num_unprocessed_jobs}")
 
         # rewards:
@@ -226,6 +245,10 @@ class ComputeClusterEnv(gym.Env):
             reward += weekly_reward
             self.env_print(f"$$$$$ weekly_reward: {weekly_reward}")
             self.week += 1
+
+            if self.render_mode == 'human':
+                plot(168, self.on_nodes, self.used_nodes, self.job_queue_sizes, self.prices)
+
             terminated = True
 
         self.env_print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
@@ -237,3 +260,33 @@ class ComputeClusterEnv(gym.Env):
             time.sleep(1)
 
         return self.state, reward, terminated, truncated, {}
+
+
+def plot(num_hours, on_nodes, used_nodes, job_queue_sizes, prices):
+    hours = np.arange(num_hours)
+
+    # Create a figure and a set of subplots
+    fig, ax1 = plt.subplots(figsize=(12, 6))
+
+    # Configure the first y-axis (left side) for electricity prices
+    color = 'tab:blue'
+    ax1.set_xlabel('Hours')
+    ax1.set_ylabel('Electricity Price ($/MWh)', color=color)
+    ax1.plot(hours, prices, color=color, label='Electricity Price ($/MWh)')
+    ax1.tick_params(axis='y', labelcolor=color)
+
+    # Create the second y-axis (right side) for the node counts and job queue sizes
+    ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+    color = 'tab:orange'
+    ax2.set_ylabel('Count', color=color)
+    ax2.bar(hours - 0.3, on_nodes, width=0.3, color='orange', label='Online Nodes')
+    ax2.bar(hours, used_nodes, width=0.3, color='green', label='Used Nodes')
+    ax2.bar(hours + 0.3, job_queue_sizes, width=0.3, color='red', label='Job Queue Size')
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    plt.title('Electricity Price and Compute Cluster Usage Over Time')
+    lines, labels = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines + lines2, labels + labels2, loc='upper left')
+
+    plt.show()
