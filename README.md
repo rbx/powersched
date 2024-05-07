@@ -4,4 +4,7 @@
 
 `python ./power_testenv.py` - a short training run.
 
-`python ./power_learn.py` - infinite training run with tensorboard logs and intermediate models save.
+`python ./power_train.py` - infinite training run with tensorboard logs and intermediate models save.
+
+`./power_train.py` accepts `--render` argument with "human" or "none" ("none" is the default). "none" trains silently, while "human" runs intentionally slower, adds some debug output and graph output after each episode.
+
