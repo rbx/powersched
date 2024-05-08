@@ -53,11 +53,11 @@ class ComputeClusterEnv(gym.Env):
                 shape=(MAX_NODES,),  # Correct shape to (100,)
                 dtype=np.int32
             ),
-            # job queue: [job duration, job age]
-            'job_queue': spaces.Box( # TODO: flatten this to 1D
-                low=np.zeros((MAX_QUEUE_SIZE, 2), dtype=np.int32),  # low array with shape (MAX_QUEUE_SIZE, 2)
-                high=np.array([[MAX_JOB_DURATION, MAX_JOB_AGE]] * MAX_QUEUE_SIZE, dtype=np.int32),  # high array with repeated rows
-                shape=(MAX_QUEUE_SIZE, 2),  # Each job is a [duration, age]
+            # job queue: [job duration, job age, job duration, job age, ...]
+            'job_queue': spaces.Box(
+                low=0,
+                high=max(MAX_JOB_DURATION, MAX_JOB_AGE),  # the highest from MAX_JOB_DURATION, MAX_JOB_AGE
+                shape=(MAX_QUEUE_SIZE * 2,),  # Each job is a: duration, age
                 dtype=np.int32
             ),
             # predicted prices for the next 24h
@@ -74,7 +74,7 @@ class ComputeClusterEnv(gym.Env):
         initial_nodes_state = np.zeros(MAX_NODES, dtype=np.int32)
 
         # Initialize job queue to be empty
-        initial_job_queue = np.zeros((MAX_QUEUE_SIZE, 2), dtype=np.int32)
+        initial_job_queue = np.zeros((MAX_QUEUE_SIZE * 2), dtype=np.int32)
 
         # Initialize predicted prices array
         initial_predicted_prices = np.zeros(24, dtype=np.float32)  # Pre-allocate array for 24 hours
@@ -115,19 +115,26 @@ class ComputeClusterEnv(gym.Env):
 
         self.env_print("predicted_prices: ", np.array2string(self.state['predicted_prices'], separator=" ", max_line_width=np.inf, formatter={'float_kind': lambda x: "{:05.2f}".format(x)}))
 
+        # reshape the 1d job_queue array into 2d for cleaner code
+        # print(f"shape: {self.state['job_queue'].shape}")
+        # print(f"job_queue: {self.state['job_queue']}")
+        job_queue_2d = self.state['job_queue'].reshape(-1, 2)
+        # print(f"shape: {job_queue_2d.shape}")
+        # print(f"job_queue: {job_queue_2d}")
+
         # Update job queue with 0-1 new jobs. If queue is full, do nothing
         new_jobs_count = np.random.randint(0, 2)
-        new_jobs_durations = np.random.randint(1, 11, size=new_jobs_count)
+        new_jobs_durations = np.random.randint(1, MAX_JOB_DURATION + 1, size=new_jobs_count)
         if new_jobs_count > 0:
             for i, new_job_duration in enumerate(new_jobs_durations):
-                for j in range(len(self.state['job_queue'])):
-                    if self.state['job_queue'][j][0] == 0:
-                        self.state['job_queue'][j] = [new_job_duration, 0]
+                for j in range(len(job_queue_2d)):
+                    if job_queue_2d[j][0] == 0:
+                        job_queue_2d[j] = [new_job_duration, 0]
                         break
 
         self.env_print(f"new_jobs_durations: {new_jobs_durations}")
         self.env_print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
-        self.env_print("job_queue: ", ' '.join(['[{}]'.format(' '.join(map(str, pair))) for pair in self.state['job_queue']]))
+        self.env_print("job_queue: ", ' '.join(['[{}]'.format(' '.join(map(str, pair))) for pair in job_queue_2d]))
 
         action_type, action_magnitude = action # Unpack the action array
         action_magnitude += 1
@@ -156,23 +163,23 @@ class ComputeClusterEnv(gym.Env):
                         break
 
         num_processed_jobs = 0
-        for i in range(len(self.state['job_queue'])):
-            job_duration = self.state['job_queue'][i][0]
+        for i in range(len(job_queue_2d)):
+            job_duration = job_queue_2d[i][0]
             if job_duration > 0:  # If there's a job to process
                 job_launched = False
                 for j in range(len(self.state['nodes'])):
                     node_state = self.state['nodes'][j]
                     if node_state == 0:  # If node is free
                         self.state['nodes'][j] = job_duration  # Book the node for the duration of the job
-                        self.state['job_queue'][i][0] = 0  # Set the duration of the job to 0, marking it as processed
-                        self.state['job_queue'][i][1] = 0  # ... and the age
+                        job_queue_2d[i][0] = 0  # Set the duration of the job to 0, marking it as processed
+                        job_queue_2d[i][1] = 0  # ... and the age
                         num_processed_jobs += 1
                         job_launched = True
                         break
 
                 if not job_launched:
                     # Increment the age of the job if it wasn't processed
-                    self.state['job_queue'][i][1] += 1
+                    job_queue_2d[i][1] += 1
 
         # Decrementing booked time for nodes
         for i, node_state in enumerate(self.state['nodes']):
@@ -182,7 +189,7 @@ class ComputeClusterEnv(gym.Env):
         num_used_nodes = np.sum(self.state['nodes'] > 0)
         num_on_nodes = np.sum(self.state['nodes'] > -1)
         num_off_nodes = np.sum(self.state['nodes'] == -1)
-        num_unprocessed_jobs = np.sum(self.state['job_queue'][:, 0] > 0)
+        num_unprocessed_jobs = np.sum(job_queue_2d[:, 0] > 0)
 
         # update stats
         self.on_nodes.append(num_on_nodes)
@@ -217,7 +224,7 @@ class ComputeClusterEnv(gym.Env):
         # 2. decrease reward for delayed jobs, greater if they are older. but only if there are turned off nodes
         delayed_penalty = 0
         if num_off_nodes > 0:
-            for job in self.state['job_queue']:
+            for job in job_queue_2d:
                 job_duration, job_age = job
                 if job_duration > 0:
                     delayed_penalty += PENALTY_WAITING_JOB * job_age  # Penalize for each hour a job is delayed
@@ -241,6 +248,7 @@ class ComputeClusterEnv(gym.Env):
         terminated = False
         self.hour += 1
         if self.hour >= 168:
+            # TODO: include some penalty for old jobs
             weekly_reward = self.weekly_savings / 10000
             reward += weekly_reward
             self.env_print(f"$$$$$ weekly_reward: {weekly_reward}")
@@ -252,8 +260,13 @@ class ComputeClusterEnv(gym.Env):
             terminated = True
 
         self.env_print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
-        self.env_print("job_queue: ", ' '.join(['[{}]'.format(' '.join(map(str, pair))) for pair in self.state['job_queue']]))
+        self.env_print("job_queue: ", ' '.join(['[{}]'.format(' '.join(map(str, pair))) for pair in job_queue_2d]))
         self.env_print(f"total reward: {reward}\n")
+
+        # flatten job_queue again
+        self.state['job_queue'] = job_queue_2d.flatten()
+        # print(f"shape: {self.state['job_queue'].shape}")
+        # print(f"job_queue: {self.state['job_queue']}")
 
         if self.render_mode == 'human':
             # go slow to be able to read stuff in human mode
