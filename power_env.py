@@ -11,6 +11,7 @@ MAX_QUEUE_SIZE = 20  # Maximum number of jobs in the queue
 MAX_CHANGE = 100
 MAX_JOB_DURATION = 24 # job runs at most 24h (example)
 MAX_JOB_AGE = 168 # job waits maximum a week
+ELECTRICITY_PRICE_BASE = 20
 
 class ComputeClusterEnv(gym.Env):
     """An toy environment for scheduling compute jobs based on electricity price predictions."""
@@ -79,13 +80,13 @@ class ComputeClusterEnv(gym.Env):
         # Initialize predicted prices array
         initial_predicted_prices = np.zeros(24, dtype=np.float32)  # Pre-allocate array for 24 hours
 
-        # Set the first hour's price randomly
-        initial_predicted_prices[0] = np.random.uniform(low=0.0, high=100.0)
+        # Set the first hour's price to a fixed value
+        initial_predicted_prices[0] = ELECTRICITY_PRICE_BASE
 
         # Iteratively set the price for each subsequent hour
         for i in range(1, 24):
-            price_change = np.random.uniform(low=-10.0, high=10.0)
-            initial_predicted_prices[i] = initial_predicted_prices[i-1] + price_change
+            # put in a simple day/night pattern with a +/- 20% variation
+            initial_predicted_prices[i] = ELECTRICITY_PRICE_BASE * (1 + 0.2 * np.sin(i / 24 * 2 * np.pi))
             # Ensure prices do not go negative, temporary
             initial_predicted_prices[i] = max(1.0, initial_predicted_prices[i])
 
@@ -108,7 +109,7 @@ class ComputeClusterEnv(gym.Env):
     def step(self, action):
         self.env_print(f"week: {self.week}, hour: {self.hour}")
 
-        new_price = max(1.00, self.state['predicted_prices'][0] + np.random.uniform(low=-10.0, high=10.0))
+        new_price = ELECTRICITY_PRICE_BASE * (1 + 0.2 * np.sin((self.hour % 24) / 24 * 2 * np.pi))
         current_price = self.state['predicted_prices'][0]
         self.state['predicted_prices'] = np.roll(self.state['predicted_prices'], -1)
         self.state['predicted_prices'][-1] = new_price
