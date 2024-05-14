@@ -209,8 +209,8 @@ class ComputeClusterEnv(gym.Env):
 
         # Reward components
         REWARD_TURN_OFF_NODE = 0.1  # Reward for each node turned off
-        PENALTY_WAITING_JOB = -0.5  # Additional penalty for each hour a job is delayed
-        REWARD_PROCESSED_JOB = 3  # Reward for processing jobs under favorable prices
+        PENALTY_WAITING_JOB = -0.2  # Additional penalty for each hour a job is delayed
+        REWARD_PROCESSED_JOB = 5  # Reward for processing jobs under favorable prices
 
         average_future_price = np.mean(self.state['predicted_prices'])
         self.env_print(f"$$ current_price: {current_price}")
