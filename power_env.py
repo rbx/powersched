@@ -140,6 +140,7 @@ class ComputeClusterEnv(gym.Env):
         action_type, action_magnitude = action # Unpack the action array
         action_magnitude += 1
 
+        num_node_changes = 0
         # Adjust nodes based on action
         if action_type == 0: # Decrease number of available nodes
             self.env_print(f">>> turning OFF up to {action_magnitude} nodes")
@@ -148,6 +149,7 @@ class ComputeClusterEnv(gym.Env):
                 if self.state['nodes'][i] == 0: # Find the first available node and turn it off
                     self.state['nodes'][i] = -1
                     nodes_modified += 1
+                    num_node_changes += 1
                     if nodes_modified == action_magnitude:  # Stop if enough nodes have been modified
                         break
         elif action_type == 1:
@@ -160,6 +162,7 @@ class ComputeClusterEnv(gym.Env):
                 if self.state['nodes'][i] == -1: # Find the first off node and make it available
                     self.state['nodes'][i] = 0
                     nodes_modified += 1
+                    num_node_changes += 1
                     if nodes_modified == action_magnitude:  # Stop if enough nodes have been modified
                         break
 
@@ -190,6 +193,7 @@ class ComputeClusterEnv(gym.Env):
         num_used_nodes = np.sum(self.state['nodes'] > 0)
         num_on_nodes = np.sum(self.state['nodes'] > -1)
         num_off_nodes = np.sum(self.state['nodes'] == -1)
+        num_idle_nodes = num_on_nodes - num_used_nodes
         num_unprocessed_jobs = np.sum(job_queue_2d[:, 0] > 0)
 
         # update stats
@@ -198,7 +202,7 @@ class ComputeClusterEnv(gym.Env):
         self.job_queue_sizes.append(num_unprocessed_jobs)
         self.prices.append(current_price)
 
-        self.env_print(f"num_on_nodes: {num_on_nodes}, num_off_nodes: {num_off_nodes}, num_used_nodes: {num_used_nodes}")
+        self.env_print(f"num_on_nodes: {num_on_nodes}, num_off_nodes: {num_off_nodes}, num_used_nodes: {num_used_nodes}, num_idle_nodes: {num_idle_nodes}, num_node_changes: {num_node_changes}")
         self.env_print(f"num_processed_jobs: {num_processed_jobs}, num_unprocessed_jobs: {num_unprocessed_jobs}")
 
         # rewards:
@@ -209,8 +213,10 @@ class ComputeClusterEnv(gym.Env):
 
         # Reward components
         REWARD_TURN_OFF_NODE = 0.1  # Reward for each node turned off
-        PENALTY_WAITING_JOB = -0.2  # Additional penalty for each hour a job is delayed
-        REWARD_PROCESSED_JOB = 5  # Reward for processing jobs under favorable prices
+        REWARD_PROCESSED_JOB = 5    # Reward for processing jobs under favorable prices
+        PENALTY_WAITING_JOB = -0.1  # Penalty for each hour a job is delayed
+        PENALTY_NODE_CHANGE = -0.05 # Penalty for changing node state
+        PENALTY_IDLE_NODE = -0.1    # Penalty for idling nodes
 
         average_future_price = np.mean(self.state['predicted_prices'])
         self.env_print(f"$$ current_price: {current_price}")
@@ -237,6 +243,14 @@ class ComputeClusterEnv(gym.Env):
             processed_during_good_price = REWARD_PROCESSED_JOB * num_processed_jobs
             reward += processed_during_good_price
             self.env_print(f"$$ processed during favorable price: {processed_during_good_price}")
+
+        # 4. penalty to avoid too frequent node state changes
+        reward += PENALTY_NODE_CHANGE * num_node_changes
+        self.env_print(f"$$ node change penalty: {PENALTY_NODE_CHANGE * num_node_changes}")
+
+        # 5. penalty for idling nodes
+        reward += PENALTY_IDLE_NODE * num_idle_nodes
+        self.env_print(f"$$ idle nodes penalty: {PENALTY_IDLE_NODE * num_idle_nodes}")
 
         current_daily_cost = num_on_nodes * current_price
         maximum_daily_cost = MAX_NODES * current_price
