@@ -6,15 +6,19 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 
+WEEK_HOURS = 168
+
 MAX_NODES = 100  # Maximum number of nodes
 MAX_QUEUE_SIZE = 20  # Maximum number of jobs in the queue
 MAX_CHANGE = 100
 MAX_JOB_DURATION = 24 # job runs at most 24h (example)
-MAX_JOB_AGE = 168 # job waits maximum a week
+MAX_JOB_AGE = WEEK_HOURS # job waits maximum a week
 
 ELECTRICITY_PRICE_BASE = 20
 COST_IDLE = 150
 COST_USED = 450
+
+EPISODE_HOURS = 336
 
 class ComputeClusterEnv(gym.Env):
     """An toy environment for scheduling compute jobs based on electricity price predictions."""
@@ -24,22 +28,30 @@ class ComputeClusterEnv(gym.Env):
     def render(self, mode='human'):
         self.render_mode = mode
 
+    def set_progress(self, iterations=0, timesteps=0):
+        self.current_step = iterations * timesteps
+        self.episode = self.current_step // EPISODE_HOURS
+
     def env_print(self, *args):
         """Prints only if the render mode is 'human'."""
         if self.render_mode == 'human':
             print(*args)
 
-    def __init__(self, render_mode='none'):
+    def __init__(self, render_mode='none', quick_plot=False):
         super().__init__()
 
         self.render_mode = render_mode
+        self.quick_plot = quick_plot
         self.hour = 0
         self.week = 0
+        self.episode_reward = 0
 
         self.on_nodes = []
         self.used_nodes = []
+        self.idle_nodes = []
         self.job_queue_sizes = []
         self.prices = []
+        self.rewards = []
 
         # actions: - change number of available nodes:
         #   direction: 0: decrease, 1: maintain, 2: increase
@@ -95,11 +107,14 @@ class ComputeClusterEnv(gym.Env):
 
         self.hour = 0
         self.weekly_savings = 0
+        self.episode_reward = 0
 
         self.on_nodes = []
         self.used_nodes = []
+        self.idle_nodes = []
         self.job_queue_sizes = []
         self.prices = []
+        self.rewards = []
 
         self.state = {
             'nodes': initial_nodes_state,
@@ -110,7 +125,8 @@ class ComputeClusterEnv(gym.Env):
         return self.state, {}
 
     def step(self, action):
-        self.env_print(f"week: {self.week}, hour: {self.hour}")
+        self.env_print(f"week: {self.week}, hour: {self.hour}, step: {self.current_step}, episode: {self.episode}")
+        self.current_step += 1
 
         new_price = ELECTRICITY_PRICE_BASE * (1 + 0.2 * np.sin((self.hour % 24) / 24 * 2 * np.pi))
         current_price = self.state['predicted_prices'][0]
@@ -202,6 +218,7 @@ class ComputeClusterEnv(gym.Env):
         # update stats
         self.on_nodes.append(num_on_nodes)
         self.used_nodes.append(num_used_nodes)
+        self.idle_nodes.append(num_idle_nodes)
         self.job_queue_sizes.append(num_unprocessed_jobs)
         self.prices.append(current_price)
 
@@ -227,7 +244,7 @@ class ComputeClusterEnv(gym.Env):
 
         reward = 0
 
-        # # 0. Reward calculation based on Workload (W) / Cost (C)
+        # 0. Reward calculation based on Workload (W) / Cost (C)
         workload = num_used_nodes
         cost = (COST_IDLE * current_price * num_idle_nodes) + (COST_USED * current_price * num_used_nodes)
         reward = workload / (cost + 1e-6) * 10000 # Add a small constant to avoid division by zero
@@ -259,8 +276,8 @@ class ComputeClusterEnv(gym.Env):
         # self.env_print(f"$$ node change penalty: {PENALTY_NODE_CHANGE * num_node_changes}")
 
         # 5. penalty for idling nodes
-        # reward += PENALTY_IDLE_NODE * num_idle_nodes
-        # self.env_print(f"$$ idle nodes penalty: {PENALTY_IDLE_NODE * num_idle_nodes}")
+        reward += PENALTY_IDLE_NODE * num_idle_nodes
+        self.env_print(f"$$ idle nodes penalty: {PENALTY_IDLE_NODE * num_idle_nodes}")
 
         # current_daily_cost = num_on_nodes * current_price
         # maximum_daily_cost = MAX_NODES * current_price
@@ -269,24 +286,29 @@ class ComputeClusterEnv(gym.Env):
         # self.env_print(f"$$ current_daily_cost: {current_daily_cost}, current_saving: {current_saving}")
         # self.env_print(f"$$ maximum_daily_cost: {maximum_daily_cost}, weekly_savings: {self.weekly_savings}")
 
+        self.rewards.append(reward)
+
         truncated = False
         terminated = False
         self.hour += 1
-        if self.hour >= 336:
-            # TODO: include some penalty for old jobs
+        if self.hour >= EPISODE_HOURS:
             # weekly_reward = self.weekly_savings / 10000
             # reward += weekly_reward
             # self.env_print(f"$$$$$ weekly_reward: {weekly_reward}")
-            self.week += 1
+            self.week += (EPISODE_HOURS // WEEK_HOURS)
+            self.episode += 1
 
             if self.render_mode == 'human':
-                plot(336, self.on_nodes, self.used_nodes, self.job_queue_sizes, self.prices, True)
+                plot(EPISODE_HOURS, self.on_nodes, self.used_nodes, self.job_queue_sizes, self.prices, True, self.current_step)
+                plot_reward(self.used_nodes, self.idle_nodes, self.rewards)
 
             terminated = True
 
         self.env_print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
         self.env_print("job_queue: ", ' '.join(['[{}]'.format(' '.join(map(str, pair))) for pair in job_queue_2d]))
-        self.env_print(f"total reward: {reward:.15f}\n")
+        self.env_print(f"total reward: {reward:.15f}")
+        self.episode_reward = self.episode_reward + reward
+        self.env_print(f"episode reward: {self.episode_reward:.15f}\n")
 
         # flatten job_queue again
         self.state['job_queue'] = job_queue_2d.flatten()
@@ -295,12 +317,13 @@ class ComputeClusterEnv(gym.Env):
 
         if self.render_mode == 'human':
             # go slow to be able to read stuff in human mode
-            time.sleep(1)
+            if not self.quick_plot:
+                time.sleep(1)
 
         return self.state, reward, terminated, truncated, {}
 
 
-def plot(num_hours, on_nodes, used_nodes, job_queue_sizes, prices, use_lines=False):
+def plot(num_hours, on_nodes, used_nodes, job_queue_sizes, prices, use_lines, steps):
     hours = np.arange(num_hours)
 
     # Create a figure and a set of subplots
@@ -328,10 +351,38 @@ def plot(num_hours, on_nodes, used_nodes, job_queue_sizes, prices, use_lines=Fal
         ax2.bar(hours + 0.3, job_queue_sizes, width=0.3, color='red', label='Job Queue Size')
 
     ax2.tick_params(axis='y', labelcolor=color)
+    ax2.set_ylim(0, MAX_NODES)
 
-    plt.title('Electricity Price and Compute Cluster Usage Over Time')
+    plt.title(f"Electricity Price and Compute Cluster Usage Over Time. model @ step {steps}")
     lines, labels = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines + lines2, labels + labels2, loc='upper left')
 
+    plt.show()
+
+def plot_reward(used_nodes, idle_nodes, rewards):
+    # Create a figure and axis
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    # Scatter plot of rewards based on used_nodes and idle_nodes
+    sc = ax.scatter(used_nodes, idle_nodes, c=rewards, cmap='viridis', marker='o')
+
+    # Add color bar
+    cbar = plt.colorbar(sc)
+    cbar.set_label('Reward')
+
+    # Set labels and title
+    ax.set_xlabel('Number of Used Nodes')
+    ax.set_ylabel('Number of Idle Nodes')
+    ax.set_title('Reward')
+
+    # Diagonal line to show valid region boundary
+    n_max = MAX_NODES
+    ax.plot([0, n_max], [n_max, 0], 'r--')
+
+    # Set axis limits
+    ax.set_xlim(0, n_max)
+    ax.set_ylim(0, n_max)
+
+    # Show the plot
     plt.show()

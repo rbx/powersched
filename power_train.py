@@ -8,6 +8,7 @@ import argparse
 def main():
     parser = argparse.ArgumentParser(description="Run the Compute Cluster Environment with optional rendering.")
     parser.add_argument('--render', type=str, default='none', choices=['human', 'none'], help='Render mode for the environment (default: none).')
+    parser.add_argument('--quick-plot', action='store_true', help='In "human" render mode, skip quickly to the plot (default: False).')
 
     args = parser.parse_args()
 
@@ -20,10 +21,8 @@ def main():
     if not os.path.exists(logdir):
         os.makedirs(logdir)
 
-    # Create an instance of the environment with the specified render mode
-    env = ComputeClusterEnv(render_mode=args.render)
+    env = ComputeClusterEnv(render_mode=args.render, quick_plot=args.quick_plot)
     env.reset()
-
 
     # Check if there are any saved models in models_dir
     model_files = glob.glob(models_dir + "*.zip")
@@ -48,6 +47,8 @@ def main():
         except ValueError:
             # If the filename doesn't follow expected format, default to 0
             iters = 0
+
+    env.set_progress(iters, TIMESTEPS)
 
     try:
         while True:
