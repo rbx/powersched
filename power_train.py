@@ -4,13 +4,26 @@ from power_env import ComputeClusterEnv
 import re
 import glob
 import argparse
+import pandas as pd
 
 def main():
     parser = argparse.ArgumentParser(description="Run the Compute Cluster Environment with optional rendering.")
     parser.add_argument('--render', type=str, default='none', choices=['human', 'none'], help='Render mode for the environment (default: none).')
     parser.add_argument('--quick-plot', action='store_true', help='In "human" render mode, skip quickly to the plot (default: False).')
+    parser.add_argument('--prices', type=str, default=None, help='Path to the CSV file containing electricity prices (Date,Price)')
 
     args = parser.parse_args()
+    csv_file_path = args.prices
+
+    if csv_file_path:
+        df = pd.read_csv(csv_file_path, parse_dates=['Date'])
+        prices = df['Price'].values.tolist()
+        # Print the first few prices to verify
+        print(f"Loaded {len(prices)} prices from CSV.")
+        print("First few prices:", prices[:19])
+    else:
+        prices = None
+        print("No CSV file provided. Using default price generation.")
 
     models_dir = "models/power/"
     logdir = "logs/power/"
@@ -21,7 +34,7 @@ def main():
     if not os.path.exists(logdir):
         os.makedirs(logdir)
 
-    env = ComputeClusterEnv(render_mode=args.render, quick_plot=args.quick_plot)
+    env = ComputeClusterEnv(render_mode=args.render, quick_plot=args.quick_plot, external_prices=prices)
     env.reset()
 
     # Check if there are any saved models in models_dir
