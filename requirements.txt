@@ -1,5 +1,4 @@
 stable-baselines3
-gymnasium[box2d]
-opencv-python
+gymnasium
 tensorboard
 matplotlib

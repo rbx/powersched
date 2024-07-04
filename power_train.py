@@ -11,6 +11,8 @@ def main():
     parser.add_argument('--render', type=str, default='none', choices=['human', 'none'], help='Render mode for the environment (default: none).')
     parser.add_argument('--quick-plot', action='store_true', help='In "human" render mode, skip quickly to the plot (default: False).')
     parser.add_argument('--prices', type=str, default=None, help='Path to the CSV file containing electricity prices (Date,Price)')
+    parser.add_argument('--plot-rewards', action='store_true', help='Per step, plot rewards for all possible num_idle_nodes & num_used_nodes (default: False).')
+    parser.add_argument('--ent-coef', type=float, default=0.0, help='Entropy coefficient for the loss calculation (default: 0.0) (Passed to PPO).')
 
     args = parser.parse_args()
     csv_file_path = args.prices
@@ -34,7 +36,7 @@ def main():
     if not os.path.exists(logdir):
         os.makedirs(logdir)
 
-    env = ComputeClusterEnv(render_mode=args.render, quick_plot=args.quick_plot, external_prices=prices)
+    env = ComputeClusterEnv(render_mode=args.render, quick_plot=args.quick_plot, external_prices=prices, plot_rewards=args.plot_rewards)
     env.reset()
 
     # Check if there are any saved models in models_dir
@@ -47,7 +49,7 @@ def main():
         print(f"Found a saved model: {latest_model_file}, continuing training from it.")
         model = PPO.load(latest_model_file, env=env, tensorboard_log=logdir)
     else:
-        model = PPO('MultiInputPolicy', env, verbose=1, tensorboard_log=logdir)
+        model = PPO('MultiInputPolicy', env, verbose=1, tensorboard_log=logdir, ent_coef=args.ent_coef)
 
     TIMESTEPS = 100000
     iters = 0
