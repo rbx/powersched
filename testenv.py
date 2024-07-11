@@ -1,4 +1,4 @@
-from power_env import ComputeClusterEnv
+from environment import ComputeClusterEnv
 
 env = ComputeClusterEnv()
 env.render()

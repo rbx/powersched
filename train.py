@@ -1,6 +1,6 @@
 from stable_baselines3 import PPO
 import os
-from power_env import ComputeClusterEnv
+from environment import ComputeClusterEnv
 import re
 import glob
 import argparse

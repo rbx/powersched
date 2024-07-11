@@ -1,5 +1,5 @@
 from stable_baselines3.common.env_checker import check_env
-from power_env import ComputeClusterEnv
+from environment import ComputeClusterEnv
 
 env = ComputeClusterEnv()
 
