@@ -13,7 +13,7 @@ WEEK_HOURS = 168
 MAX_NODES = 100  # Maximum number of nodes
 MAX_QUEUE_SIZE = 20  # Maximum number of jobs in the queue
 MAX_CHANGE = 100
-MAX_JOB_DURATION = 24 # job runs at most 24h (example)
+MAX_JOB_DURATION = 1 # job runs at most 24h (example)
 MAX_JOB_AGE = WEEK_HOURS # job waits maximum a week
 
 ELECTRICITY_PRICE_BASE = 20
@@ -151,7 +151,10 @@ class ComputeClusterEnv(gym.Env):
         # reshape the 1d job_queue array into 2d for cleaner code
         job_queue_2d = self.state['job_queue'].reshape(-1, 2)
 
-        # TODO: is the agent able to turn off nodes that are in use when now jobs are already available?
+        # Decrement booked time for nodes and complete running jobs
+        for i, node_state in enumerate(self.state['nodes']):
+            if node_state > 0:  # If node is booked
+                self.state['nodes'][i] -= 1  # Decrement the booked time
 
         # Update job queue with 0-1 new jobs. If queue is full, do nothing
         new_jobs_count = np.random.randint(0, 2)
@@ -196,6 +199,7 @@ class ComputeClusterEnv(gym.Env):
                     if nodes_modified == action_magnitude:  # Stop if enough nodes have been modified
                         break
 
+        # assign jobs to available nodes
         num_processed_jobs = 0
         for i in range(len(job_queue_2d)):
             job_duration = job_queue_2d[i][0]
@@ -214,11 +218,6 @@ class ComputeClusterEnv(gym.Env):
                 if not job_launched:
                     # Increment the age of the job if it wasn't processed
                     job_queue_2d[i][1] += 1
-
-        # Decrementing booked time for nodes
-        for i, node_state in enumerate(self.state['nodes']):
-            if node_state > 0:  # If node is booked
-                self.state['nodes'][i] -= 1  # Decrement the booked time
 
         num_used_nodes = np.sum(self.state['nodes'] > 0)
         num_on_nodes = np.sum(self.state['nodes'] > -1)

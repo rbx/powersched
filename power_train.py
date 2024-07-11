@@ -27,8 +27,8 @@ def main():
         prices = None
         print("No CSV file provided. Using default price generation.")
 
-    models_dir = "models/power/"
-    logdir = "logs/power/"
+    models_dir = "models/"
+    logdir = "logs/"
 
     if not os.path.exists(models_dir):
         os.makedirs(models_dir)
