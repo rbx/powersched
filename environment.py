@@ -125,7 +125,6 @@ class ComputeClusterEnv(gym.Env):
                 initial_predicted_prices[i] = max(1.0, initial_predicted_prices[i])
 
         self.hour = 0
-        self.weekly_savings = 0
         self.episode_reward = 0
 
         self.on_nodes = []
@@ -264,9 +263,6 @@ class ComputeClusterEnv(gym.Env):
         terminated = False
         self.hour += 1
         if self.hour >= EPISODE_HOURS:
-            # weekly_reward = self.weekly_savings / 10000
-            # reward += weekly_reward
-            # self.env_print(f"$$$$$ weekly_reward: {weekly_reward}")
             self.week += (EPISODE_HOURS // WEEK_HOURS)
             self.episode += 1
 
