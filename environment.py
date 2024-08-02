@@ -24,12 +24,37 @@ COST_USED = 450
 
 EPISODE_HOURS = WEEK_HOURS * 2
 
+    # possible rewards:
+    # - cost savings (due to disabled nodes)
+    # - reduced conventional energy usage
+    # - cost of systems doing nothing (should not waste available resources)
+    # - job queue advancement
 # Reward components
 REWARD_TURN_OFF_NODE = 0.1 # Reward for each node turned off
 REWARD_PROCESSED_JOB = 1   # Reward for processing jobs under favorable prices
 PENALTY_WAITING_JOB = -0.1  # Penalty for each hour a job is delayed
 PENALTY_NODE_CHANGE = -0.05 # Penalty for changing node state
 PENALTY_IDLE_NODE = -0.1 # Penalty for idling nodes
+
+# TODO:
+# - baseline: energy price * job duration
+# - baseline: all unused nodes are off (but no job delays) -> price average
+# - should the observation space be normalized too?
+
+class Weights:
+    def __init__(self, efficiency_weight, price_weight, idle_weight):
+        self.efficiency_weight = efficiency_weight
+        self.price_weight = price_weight
+        self.idle_weight = idle_weight
+
+    def __str__(self):
+        return f"Weights(efficiency_weight={self.efficiency_weight}, price_weight={self.price_weight}, idle_weight={self.idle_weight}. sum={self.sum():.2f})"
+
+    def __repr__(self):
+        return self.__str__()
+
+    def sum(self):
+        return round(np.sum([self.efficiency_weight, self.price_weight, self.idle_weight]), 2)
 
 class ComputeClusterEnv(gym.Env):
     """An toy environment for scheduling compute jobs based on electricity price predictions."""
@@ -48,13 +73,17 @@ class ComputeClusterEnv(gym.Env):
         if self.render_mode == 'human':
             print(*args)
 
-    def __init__(self, render_mode='none', quick_plot=False, external_prices=None, plot_rewards=False):
+    def __init__(self, weights: Weights, session, render_mode, quick_plot, external_prices, plot_rewards, plots_filepath):
         super().__init__()
 
+        self.session = session
+        self.weights = weights
         self.render_mode = render_mode
         self.quick_plot = quick_plot
         self.external_prices = external_prices
         self.plot_rewards = plot_rewards
+        self.plots_filepath = plots_filepath
+
         self.current_step = 0
         self.episode = 0
 
@@ -68,6 +97,8 @@ class ComputeClusterEnv(gym.Env):
         self.idle_nodes = []
         self.job_queue_sizes = []
         self.prices = []
+
+        print(f"weights: {self.weights.sum()}, {self.weights}")
 
         # actions: - change number of available nodes:
         #   direction: 0: decrease, 1: maintain, 2: increase
@@ -270,7 +301,7 @@ class ComputeClusterEnv(gym.Env):
             # TODO: sparse rewards?
 
             if self.render_mode == 'human':
-                self.plot(EPISODE_HOURS, self.on_nodes, self.used_nodes, self.job_queue_sizes, self.prices, True, self.current_step)
+                self.plot(EPISODE_HOURS, self.on_nodes, self.used_nodes, self.job_queue_sizes, self.prices, True, self.plots_filepath)
 
             terminated = True
 
@@ -285,12 +316,6 @@ class ComputeClusterEnv(gym.Env):
         return self.state, reward, terminated, truncated, {}
 
     def calculate_reward(self, num_used_nodes, num_idle_nodes, current_price, average_future_price, num_off_nodes, num_processed_jobs, num_node_changes, job_queue_2d):
-        # possible rewards:
-        # - cost savings (due to disabled nodes)
-        # - reduced conventional energy usage
-        # - cost of systems doing nothing (should not waste available resources)
-        # - job queue advancement
-
         # 0. Efficiency. Reward calculation based on Workload (W) / Cost (C)
         efficiency_reward_norm = self.reward_efficiency_normalized(num_used_nodes, num_idle_nodes, current_price)
 
@@ -310,12 +335,12 @@ class ComputeClusterEnv(gym.Env):
         idle_penalty_norm = self.penalty_idle_normalized(num_idle_nodes)
 
         reward = (
-            1.0 * efficiency_reward_norm
+            self.weights.efficiency_weight * efficiency_reward_norm
             # + 0.0 * turned_off_reward
-            + 3.0 * price_reward_norm
+            + self.weights.price_weight * price_reward_norm
             # + 0.0 * delayed_jobs_penalty
             # + 0.0 * node_change_penalty
-            + 1.0 * idle_penalty_norm
+            + self.weights.idle_weight * idle_penalty_norm
         )
 
         return reward
@@ -398,7 +423,7 @@ class ComputeClusterEnv(gym.Env):
         # self.env_print(f"$$ CLIPPED normalized_penalty: {normalized_penalty}")
         return normalized_penalty
 
-    def plot(self, num_hours, on_nodes, used_nodes, job_queue_sizes, prices, use_lines, steps):
+    def plot(self, num_hours, on_nodes, used_nodes, job_queue_sizes, prices, use_lines, plots_dir):
         hours = np.arange(num_hours)
 
         fig, ax1 = plt.subplots(figsize=(12, 6))
@@ -425,12 +450,15 @@ class ComputeClusterEnv(gym.Env):
         ax2.tick_params(axis='y', labelcolor=color)
         ax2.set_ylim(0, MAX_NODES)
 
-        plt.title(f"Electricity Price and Compute Cluster Usage Over Time. model @ step {steps}")
+        plt.title(f"session: {self.session}, step: {self.current_step}, episode: {self.episode}\nweights: {self.weights}\nElectricity Price and Compute Cluster Usage Over Time.")
         lines, labels = ax1.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax1.legend(lines + lines2, labels + labels2, loc='upper left')
 
+        plt.savefig(self.plots_filepath)
+        print(f"Figure saved as: {self.plots_filepath}")
         plt.show()
+        plt.close(fig)
 
     def plot_reward(self, num_used_nodes, num_idle_nodes, current_price, num_off_nodes, average_future_price, num_processed_jobs, num_node_changes, job_queue_2d):
         used_nodes, idle_nodes, rewards = [], [], []
@@ -450,7 +478,7 @@ class ComputeClusterEnv(gym.Env):
         plt.xlabel('Number of Used Nodes')
         plt.ylabel('Number of Idle Nodes')
 
-        title = f"step: {self.current_step}, episode: {self.episode}\ncurrent_price: {current_price:.2f}, average_future_price: {average_future_price:.2f}\nnum_processed_jobs: {num_processed_jobs}, num_node_changes: {num_node_changes}, num_off_nodes: {num_off_nodes}"
+        title = f"session: {self.session}, step: {self.current_step}, episode: {self.episode}\ncurrent_price: {current_price:.2f}, average_future_price: {average_future_price:.2f}\nnum_processed_jobs: {num_processed_jobs}, num_node_changes: {num_node_changes}, num_off_nodes: {num_off_nodes}"
         plt.title(title, fontsize=10)
 
         plt.plot([0, MAX_NODES], [MAX_NODES, 0], 'r--', linewidth=2, label='Max Nodes Constraint')
