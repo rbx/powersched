@@ -64,9 +64,10 @@ class ComputeClusterEnv(gym.Env):
     def render(self, mode='human'):
         self.render_mode = mode
 
-    def set_progress(self, iterations=0, timesteps=0):
+    def set_progress(self, iterations, timesteps):
         self.current_step = iterations * timesteps
-        self.episode = self.current_step // EPISODE_HOURS
+        self.current_episode = self.current_step // EPISODE_HOURS
+        self.current_week = self.current_step // WEEK_HOURS
 
     def env_print(self, *args):
         """Prints only if the render mode is 'human'."""
@@ -85,20 +86,14 @@ class ComputeClusterEnv(gym.Env):
         self.plots_filepath = plots_filepath
 
         self.current_step = 0
-        self.episode = 0
+        self.current_episode = 0
+        self.current_week = 0
 
-        self.hour = 0
-        self.week = 0
-        self.episode_reward = 0
+        self.reset_state()
+
         self.price_index = 0
 
-        self.on_nodes = []
-        self.used_nodes = []
-        self.idle_nodes = []
-        self.job_queue_sizes = []
-        self.prices = []
-
-        print(f"weights: {self.weights.sum()}, {self.weights}")
+        print(f"weights: {self.weights}")
 
         # actions: - change number of available nodes:
         #   direction: 0: decrease, 1: maintain, 2: increase
@@ -156,14 +151,7 @@ class ComputeClusterEnv(gym.Env):
                 # Ensure prices do not go negative, temporary
                 initial_predicted_prices[i] = max(1.0, initial_predicted_prices[i])
 
-        self.hour = 0
-        self.episode_reward = 0
-
-        self.on_nodes = []
-        self.used_nodes = []
-        self.idle_nodes = []
-        self.job_queue_sizes = []
-        self.prices = []
+        self.reset_state()
 
         self.state = {
             'nodes': initial_nodes_state,
@@ -173,15 +161,25 @@ class ComputeClusterEnv(gym.Env):
 
         return self.state, {}
 
+    def reset_state(self):
+        self.current_hour = 0
+        self.episode_reward = 0
+
+        self.on_nodes = []
+        self.used_nodes = []
+        self.idle_nodes = []
+        self.job_queue_sizes = []
+        self.prices = []
+
     def step(self, action):
-        self.env_print(f"week: {self.week}, hour: {self.hour}, step: {self.current_step}, episode: {self.episode}")
+        self.env_print(f"week: {self.current_week}, hour: {self.current_hour}, step: {self.current_step}, episode: {self.current_episode}")
         self.current_step += 1
 
         if self.external_prices is not None:
             new_price = self.external_prices[(self.price_index + 24) % len(self.external_prices)]
             self.price_index = (self.price_index + 1) % len(self.external_prices)
         else:
-            new_price = ELECTRICITY_PRICE_BASE * (1 + 0.2 * np.sin((self.hour % 24) / 24 * 2 * np.pi))
+            new_price = ELECTRICITY_PRICE_BASE * (1 + 0.2 * np.sin((self.current_hour % 24) / 24 * 2 * np.pi))
 
         current_price = self.state['predicted_prices'][0]
         self.state['predicted_prices'] = np.roll(self.state['predicted_prices'], -1)
@@ -293,10 +291,10 @@ class ComputeClusterEnv(gym.Env):
 
         truncated = False
         terminated = False
-        self.hour += 1
-        if self.hour >= EPISODE_HOURS:
-            self.week += (EPISODE_HOURS // WEEK_HOURS)
-            self.episode += 1
+        self.current_hour += 1
+        if self.current_hour >= EPISODE_HOURS:
+            self.current_week += (EPISODE_HOURS // WEEK_HOURS)
+            self.current_episode += 1
 
             # TODO: sparse rewards?
 
@@ -450,7 +448,7 @@ class ComputeClusterEnv(gym.Env):
         ax2.tick_params(axis='y', labelcolor=color)
         ax2.set_ylim(0, MAX_NODES)
 
-        plt.title(f"session: {self.session}, step: {self.current_step}, episode: {self.episode}\nweights: {self.weights}\nElectricity Price and Compute Cluster Usage Over Time.")
+        plt.title(f"session: {self.session}, step: {self.current_step}, episode: {self.current_episode}\nweights: {self.weights}\nElectricity Price and Compute Cluster Usage Over Time.")
         lines, labels = ax1.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax1.legend(lines + lines2, labels + labels2, loc='upper left')
@@ -478,7 +476,7 @@ class ComputeClusterEnv(gym.Env):
         plt.xlabel('Number of Used Nodes')
         plt.ylabel('Number of Idle Nodes')
 
-        title = f"session: {self.session}, step: {self.current_step}, episode: {self.episode}\ncurrent_price: {current_price:.2f}, average_future_price: {average_future_price:.2f}\nnum_processed_jobs: {num_processed_jobs}, num_node_changes: {num_node_changes}, num_off_nodes: {num_off_nodes}"
+        title = f"session: {self.session}, step: {self.current_step}, episode: {self.current_episode}\ncurrent_price: {current_price:.2f}, average_future_price: {average_future_price:.2f}\nnum_processed_jobs: {num_processed_jobs}, num_node_changes: {num_node_changes}, num_off_nodes: {num_off_nodes}"
         plt.title(title, fontsize=10)
 
         plt.plot([0, MAX_NODES], [MAX_NODES, 0], 'r--', linewidth=2, label='Max Nodes Constraint')
