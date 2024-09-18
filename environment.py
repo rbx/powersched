@@ -37,8 +37,10 @@ PENALTY_NODE_CHANGE = -0.05 # Penalty for changing node state
 PENALTY_IDLE_NODE = -0.1 # Penalty for idling nodes
 
 # TODO:
+# - baseline: do nothing: nodes * power * price
 # - baseline: energy price * job duration
-# - baseline: all unused nodes are off (but no job delays) -> price average
+# - baseline: all unused nodes are off (but no job delays)
+#
 # - should the observation space be normalized too?
 
 class Weights:

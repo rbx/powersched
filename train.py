@@ -13,7 +13,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run the Compute Cluster Environment with optional rendering.")
     parser.add_argument('--render', type=str, default='none', choices=['human', 'none'], help='Render mode for the environment (default: none).')
     parser.add_argument('--quick-plot', action='store_true', help='In "human" render mode, skip quickly to the plot (default: False).')
-    parser.add_argument('--prices', type=str, default=None, help='Path to the CSV file containing electricity prices (Date,Price)')
+    parser.add_argument('--prices', type=str, nargs='?', const="", default="", help='Path to the CSV file containing electricity prices (Date,Price)')
     parser.add_argument('--plot-rewards', action='store_true', help='Per step, plot rewards for all possible num_idle_nodes & num_used_nodes (default: False).')
     parser.add_argument('--ent-coef', type=float, default=0.0, help='Entropy coefficient for the loss calculation (default: 0.0) (Passed to PPO).')
     parser.add_argument("--efficiency-weight", type=float, default=0.7, help="Weight for efficiency reward")

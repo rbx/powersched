@@ -29,7 +29,7 @@ def generate_weight_combinations(step=0.1, fixed_weight=None, fixed_value=None):
 
     return combinations
 
-def run(efficiency_weight, price_weight, idle_weight, iter_limit_per_step, session):
+def run(efficiency_weight, price_weight, idle_weight, iter_limit_per_step, session, prices):
     python_executable = sys.executable
     command = [
         python_executable, "train.py",
@@ -37,6 +37,7 @@ def run(efficiency_weight, price_weight, idle_weight, iter_limit_per_step, sessi
         "--price-weight", f"{price_weight:.2f}",
         "--idle-weight", f"{idle_weight:.2f}",
         "--iter-limit", f"{iter_limit_per_step}",
+        "--prices", f"{prices}",
         "--session", f"{session}"
     ]
     print(f"executing: {command}")
@@ -49,6 +50,7 @@ def run(efficiency_weight, price_weight, idle_weight, iter_limit_per_step, sessi
 def main():
     parser = argparse.ArgumentParser(description="Run parameter sweep for weights")
     parser.add_argument("--step", type=float, default=0.1, help="Step size for weight combinations")
+    parser.add_argument('--prices', type=str, nargs='?', const="", default="", help='Path to the CSV file containing electricity prices (Date,Price)')
     parser.add_argument("--fix-weight", choices=['efficiency', 'price', 'idle'], help="Which weight to fix")
     parser.add_argument("--fix-value", type=float, help="Value for the fixed weight")
     parser.add_argument("--iter-limit-per-step", type=int, help="Max number of training iterations per step (1 iteration = {TIMESTEPS} steps)")
@@ -63,7 +65,7 @@ def main():
     for combo in combinations:
         efficiency_weight, price_weight, idle_weight = combo
         print(f"Running with weights: {efficiency_weight}, {price_weight}, {idle_weight}")
-        run(efficiency_weight, price_weight, idle_weight, iter_limit_per_step=args.iter_limit_per_step, session=args.session)
+        run(efficiency_weight, price_weight, idle_weight, iter_limit_per_step=args.iter_limit_per_step, session=args.session, prices=args.prices)
 
 if __name__ == "__main__":
     main()
