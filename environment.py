@@ -3,6 +3,7 @@ import time
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+from weights import Weights
 
 import matplotlib.pyplot as plt
 
@@ -43,21 +44,6 @@ PENALTY_IDLE_NODE = -0.1 # Penalty for idling nodes
 #
 # - should the observation space be normalized too?
 
-class Weights:
-    def __init__(self, efficiency_weight, price_weight, idle_weight):
-        self.efficiency_weight = efficiency_weight
-        self.price_weight = price_weight
-        self.idle_weight = idle_weight
-
-    def __str__(self):
-        return f"Weights(efficiency_weight={self.efficiency_weight}, price_weight={self.price_weight}, idle_weight={self.idle_weight}. sum={self.sum():.2f})"
-
-    def __repr__(self):
-        return self.__str__()
-
-    def sum(self):
-        return round(np.sum([self.efficiency_weight, self.price_weight, self.idle_weight]), 2)
-
 class ComputeClusterEnv(gym.Env):
     """An toy environment for scheduling compute jobs based on electricity price predictions."""
 
@@ -79,8 +65,8 @@ class ComputeClusterEnv(gym.Env):
     def __init__(self, weights: Weights, session, render_mode, quick_plot, external_prices, plot_rewards, plots_filepath):
         super().__init__()
 
-        self.session = session
         self.weights = weights
+        self.session = session
         self.render_mode = render_mode
         self.quick_plot = quick_plot
         self.external_prices = external_prices
