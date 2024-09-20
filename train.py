@@ -30,7 +30,7 @@ def main():
         prices = df['Price'].values.tolist()
         # Print the first few prices to verify
         print(f"Loaded {len(prices)} prices from CSV.")
-        print("First few prices:", prices[:19])
+        print("First few prices:", prices[:30])
     else:
         prices = None
         print("No CSV file provided. Using default price generation.")

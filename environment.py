@@ -1,11 +1,12 @@
 import time
 
-import gymnasium as gym
 from gymnasium import spaces
-import numpy as np
-from weights import Weights
-
+import gymnasium as gym
 import matplotlib.pyplot as plt
+import numpy as np
+
+from prices import Prices
+from weights import Weights
 
 WEEK_HOURS = 168
 
@@ -16,20 +17,16 @@ MAX_JOB_DURATION = 1 # maximum job runtime
 MAX_JOB_AGE = WEEK_HOURS # job waits maximum a week
 MAX_NEW_JOBS_PER_HOUR = 5
 
-ELECTRICITY_PRICE_BASE = 20
-MAX_PRICE = 24
-MIN_PRICE = 16
-
 COST_IDLE = 150
 COST_USED = 450
 
 EPISODE_HOURS = WEEK_HOURS * 2
 
-    # possible rewards:
-    # - cost savings (due to disabled nodes)
-    # - reduced conventional energy usage
-    # - cost of systems doing nothing (should not waste available resources)
-    # - job queue advancement
+# possible rewards:
+# - cost savings (due to disabled nodes)
+# - reduced conventional energy usage
+# - cost of systems doing nothing (should not waste available resources)
+# - job queue advancement
 # Reward components
 REWARD_TURN_OFF_NODE = 0.1 # Reward for each node turned off
 REWARD_PROCESSED_JOB = 1   # Reward for processing jobs under favorable prices
@@ -73,15 +70,18 @@ class ComputeClusterEnv(gym.Env):
         self.plot_rewards = plot_rewards
         self.plots_filepath = plots_filepath
 
+        self.prices = Prices(self.external_prices)
+
         self.current_step = 0
         self.current_episode = 0
         self.current_week = 0
 
         self.reset_state()
 
-        self.price_index = 0
-
         print(f"weights: {self.weights}")
+        print(f"prices.MAX_PRICE: {self.prices.MAX_PRICE}, prices.MIN_PRICE: {self.prices.MIN_PRICE}")
+        print(f"Price Statistics: {self.prices.get_price_stats()}")
+        self.prices.plot_price_histogram()
 
         # actions: - change number of available nodes:
         #   direction: 0: decrease, 1: maintain, 2: increase
@@ -118,26 +118,10 @@ class ComputeClusterEnv(gym.Env):
     def reset(self, seed = None, options = None):
         # Initialize all nodes to be 'online but free' (0)
         initial_nodes_state = np.zeros(MAX_NODES, dtype=np.int32)
-
         # Initialize job queue to be empty
         initial_job_queue = np.zeros((MAX_QUEUE_SIZE * 2), dtype=np.int32)
-
         # Initialize predicted prices array
-        initial_predicted_prices = np.zeros(24, dtype=np.float32)  # Pre-allocate array for 24 hours
-
-        # Set the first hour's price to a fixed value
-        initial_predicted_prices[0] = ELECTRICITY_PRICE_BASE
-
-        if self.external_prices is not None:
-            for i in range(24):
-                initial_predicted_prices[i] = self.external_prices[(self.price_index + i) % len(self.external_prices)]
-        else:
-            # set the price for each subsequent hour
-            for i in range(1, 24):
-                # put in a simple day/night pattern with a +/- 20% variation
-                initial_predicted_prices[i] = ELECTRICITY_PRICE_BASE * (1 + 0.2 * np.sin(i / 24 * 2 * np.pi))
-                # Ensure prices do not go negative, temporary
-                initial_predicted_prices[i] = max(1.0, initial_predicted_prices[i])
+        initial_predicted_prices = self.prices.get_predicted_prices()
 
         self.reset_state()
 
@@ -157,21 +141,14 @@ class ComputeClusterEnv(gym.Env):
         self.used_nodes = []
         self.idle_nodes = []
         self.job_queue_sizes = []
-        self.prices = []
+        self.price_stats = []
 
     def step(self, action):
         self.env_print(f"week: {self.current_week}, hour: {self.current_hour}, step: {self.current_step}, episode: {self.current_episode}")
         self.current_step += 1
 
-        if self.external_prices is not None:
-            new_price = self.external_prices[(self.price_index + 24) % len(self.external_prices)]
-            self.price_index = (self.price_index + 1) % len(self.external_prices)
-        else:
-            new_price = ELECTRICITY_PRICE_BASE * (1 + 0.2 * np.sin((self.current_hour % 24) / 24 * 2 * np.pi))
-
+        self.state['predicted_prices'] = self.prices.get_predicted_prices()
         current_price = self.state['predicted_prices'][0]
-        self.state['predicted_prices'] = np.roll(self.state['predicted_prices'], -1)
-        self.state['predicted_prices'][-1] = new_price
 
         self.env_print("predicted_prices: ", np.array2string(self.state['predicted_prices'], separator=" ", max_line_width=np.inf, formatter={'float_kind': lambda x: "{:05.2f}".format(x)}))
 
@@ -258,7 +235,7 @@ class ComputeClusterEnv(gym.Env):
         self.used_nodes.append(num_used_nodes)
         self.idle_nodes.append(num_idle_nodes)
         self.job_queue_sizes.append(num_unprocessed_jobs)
-        self.prices.append(current_price)
+        self.price_stats.append(current_price)
 
         # calculate reward
         reward = self.calculate_reward(num_used_nodes, num_idle_nodes, current_price, average_future_price, num_off_nodes, num_processed_jobs, num_node_changes, job_queue_2d)
@@ -287,7 +264,7 @@ class ComputeClusterEnv(gym.Env):
             # TODO: sparse rewards?
 
             if self.render_mode == 'human':
-                self.plot(EPISODE_HOURS, self.on_nodes, self.used_nodes, self.job_queue_sizes, self.prices, True, self.plots_filepath)
+                self.plot(EPISODE_HOURS, self.on_nodes, self.used_nodes, self.job_queue_sizes, self.price_stats, True, self.plots_filepath)
 
             terminated = True
 
@@ -345,8 +322,8 @@ class ComputeClusterEnv(gym.Env):
         # normalization: logarithmic|min-max|z-score|exponential moving average|
         current_reward = self.reward_efficiency(num_used_nodes, num_idle_nodes, current_price)
         # self.env_print(f"$$ current_reward: {current_reward}")
-        min_reward = self.reward_efficiency(0, MAX_NODES, MAX_PRICE)
-        max_reward = self.reward_efficiency(MAX_NODES, 0, MIN_PRICE)
+        min_reward = self.reward_efficiency(0, MAX_NODES, self.prices.MAX_PRICE)
+        max_reward = self.reward_efficiency(MAX_NODES, 0, self.prices.MIN_PRICE)
         normalized_reward = normalize(current_reward, min_reward, max_reward)
         # self.env_print(f"$$ normalized_reward: {normalized_reward} (min_reward: {min_reward}, max_reward: {max_reward})")
         # Clip the value to ensure it's between 0 and 1
@@ -369,8 +346,8 @@ class ComputeClusterEnv(gym.Env):
     def reward_price_normalized(self, current_price, average_future_price, num_processed_jobs):
         current_reward = self.reward_price(current_price, average_future_price, num_processed_jobs)
         # self.env_print(f"$$ current_reward: {current_reward}")
-        min_reward = self.reward_price(MAX_PRICE, MIN_PRICE, MAX_NEW_JOBS_PER_HOUR)  # Worst case: highest current price, lowest future price, max jobs processed
-        max_reward = self.reward_price(MIN_PRICE, MAX_PRICE, MAX_NEW_JOBS_PER_HOUR)  # Best case: lowest current price, highest future price, max jobs processed
+        min_reward = self.reward_price(self.prices.MAX_PRICE, self.prices.MIN_PRICE, MAX_NEW_JOBS_PER_HOUR)  # Worst case: highest current price, lowest future price, max jobs processed
+        max_reward = self.reward_price(self.prices.MIN_PRICE, self.prices.MAX_PRICE, MAX_NEW_JOBS_PER_HOUR)  # Best case: lowest current price, highest future price, max jobs processed
         normalized_reward = normalize(current_reward, min_reward, max_reward)
         # self.env_print(f"$$ normalized_reward: {normalized_reward} (min_reward: {min_reward}, max_reward: {max_reward})")
         # Clip the value to ensure it's between 0 and 1
