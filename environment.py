@@ -81,7 +81,7 @@ class ComputeClusterEnv(gym.Env):
         print(f"weights: {self.weights}")
         print(f"prices.MAX_PRICE: {self.prices.MAX_PRICE}, prices.MIN_PRICE: {self.prices.MIN_PRICE}")
         print(f"Price Statistics: {self.prices.get_price_stats()}")
-        self.prices.plot_price_histogram()
+        # self.prices.plot_price_histogram()
 
         # actions: - change number of available nodes:
         #   direction: 0: decrease, 1: maintain, 2: increase
@@ -139,7 +139,6 @@ class ComputeClusterEnv(gym.Env):
 
         self.on_nodes = []
         self.used_nodes = []
-        self.idle_nodes = []
         self.job_queue_sizes = []
         self.price_stats = []
 
@@ -149,26 +148,18 @@ class ComputeClusterEnv(gym.Env):
 
         self.state['predicted_prices'] = self.prices.get_predicted_prices()
         current_price = self.state['predicted_prices'][0]
-
         self.env_print("predicted_prices: ", np.array2string(self.state['predicted_prices'], separator=" ", max_line_width=np.inf, formatter={'float_kind': lambda x: "{:05.2f}".format(x)}))
 
         # reshape the 1d job_queue array into 2d for cleaner code
         job_queue_2d = self.state['job_queue'].reshape(-1, 2)
 
         # Decrement booked time for nodes and complete running jobs
-        for i, node_state in enumerate(self.state['nodes']):
-            if node_state > 0:  # If node is booked
-                self.state['nodes'][i] -= 1  # Decrement the booked time
+        self.process_ongoing_jobs(self.state['nodes'])
 
-        # Update job queue with 0-1 new jobs. If queue is full, do nothing
+        # Update job queue with new jobs. If queue is full, do nothing
         new_jobs_count = np.random.randint(0, MAX_NEW_JOBS_PER_HOUR + 1)
         new_jobs_durations = np.random.randint(1, MAX_JOB_DURATION + 1, size=new_jobs_count)
-        if new_jobs_count > 0:
-            for i, new_job_duration in enumerate(new_jobs_durations):
-                for j in range(len(job_queue_2d)):
-                    if job_queue_2d[j][0] == 0:
-                        job_queue_2d[j] = [new_job_duration, 0]
-                        break
+        self.add_new_jobs(job_queue_2d, new_jobs_count, new_jobs_durations)
 
         self.env_print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
         self.env_print("job_queue: ", ' '.join(['[{}]'.format(' '.join(map(str, pair))) for pair in job_queue_2d if not np.array_equal(pair, np.array([0, 0]))]))
@@ -204,24 +195,7 @@ class ComputeClusterEnv(gym.Env):
                         break
 
         # assign jobs to available nodes
-        num_processed_jobs = 0
-        for i in range(len(job_queue_2d)):
-            job_duration = job_queue_2d[i][0]
-            if job_duration > 0:  # If there's a job to process
-                job_launched = False
-                for j in range(len(self.state['nodes'])):
-                    node_state = self.state['nodes'][j]
-                    if node_state == 0:  # If node is free
-                        self.state['nodes'][j] = job_duration  # Book the node for the duration of the job
-                        job_queue_2d[i][0] = 0  # Set the duration of the job to 0, marking it as processed
-                        job_queue_2d[i][1] = 0  # ... and the age
-                        num_processed_jobs += 1
-                        job_launched = True
-                        break
-
-                if not job_launched:
-                    # Increment the age of the job if it wasn't processed
-                    job_queue_2d[i][1] += 1
+        num_processed_jobs = self.assign_jobs_to_available_nodes(job_queue_2d, self.state['nodes'])
 
         num_used_nodes = np.sum(self.state['nodes'] > 0)
         num_on_nodes = np.sum(self.state['nodes'] > -1)
@@ -233,7 +207,6 @@ class ComputeClusterEnv(gym.Env):
         # update stats
         self.on_nodes.append(num_on_nodes)
         self.used_nodes.append(num_used_nodes)
-        self.idle_nodes.append(num_idle_nodes)
         self.job_queue_sizes.append(num_unprocessed_jobs)
         self.price_stats.append(current_price)
 
@@ -277,6 +250,42 @@ class ComputeClusterEnv(gym.Env):
                 time.sleep(1)
 
         return self.state, reward, terminated, truncated, {}
+
+    def add_new_jobs(self, job_queue_2d, new_jobs_count, new_jobs_durations):
+        if new_jobs_count > 0:
+            for i, new_job_duration in enumerate(new_jobs_durations):
+                for j in range(len(job_queue_2d)):
+                    if job_queue_2d[j][0] == 0:
+                        job_queue_2d[j] = [new_job_duration, 0]
+                        break
+
+    def process_ongoing_jobs(self, nodes):
+        for i, node_state in enumerate(nodes):
+            if node_state > 0: # If node is booked
+                nodes[i] -= 1 # Decrement the booked time
+
+    def assign_jobs_to_available_nodes(self, job_queue_2d, nodes):
+        num_processed_jobs = 0
+
+        for i in range(len(job_queue_2d)):
+            job_duration = job_queue_2d[i][0]
+            if job_duration > 0:  # If there's a job to process
+                job_launched = False
+                for j in range(len(nodes)):
+                    node_state = nodes[j]
+                    if node_state == 0:  # If node is free
+                        nodes[j] = job_duration  # Book the node for the duration of the job
+                        job_queue_2d[i][0] = 0  # Set the duration of the job to 0, marking it as processed
+                        job_queue_2d[i][1] = 0  # ... and the age
+                        job_launched = True
+                        num_processed_jobs += 1
+                        break
+
+                if not job_launched:
+                    # Increment the age of the job if it wasn't processed
+                    job_queue_2d[i][1] += 1
+
+        return num_processed_jobs
 
     def calculate_reward(self, num_used_nodes, num_idle_nodes, current_price, average_future_price, num_off_nodes, num_processed_jobs, num_node_changes, job_queue_2d):
         # 0. Efficiency. Reward calculation based on Workload (W) / Cost (C)
