@@ -116,19 +116,20 @@ class ComputeClusterEnv(gym.Env):
         })
 
     def reset(self, seed = None, options = None):
-        # Initialize all nodes to be 'online but free' (0)
-        initial_nodes_state = np.zeros(MAX_NODES, dtype=np.int32)
-        # Initialize job queue to be empty
-        initial_job_queue = np.zeros((MAX_QUEUE_SIZE * 2), dtype=np.int32)
-        # Initialize predicted prices array
-        initial_predicted_prices = self.prices.get_predicted_prices()
-
         self.reset_state()
 
         self.state = {
-            'nodes': initial_nodes_state,
-            'job_queue': initial_job_queue,
-            'predicted_prices': initial_predicted_prices,
+            # Initialize all nodes to be 'online but free' (0)
+            'nodes': np.zeros(MAX_NODES, dtype=np.int32),
+            # Initialize job queue to be empty
+            'job_queue': np.zeros((MAX_QUEUE_SIZE * 2), dtype=np.int32),
+            # Initialize predicted prices array
+            'predicted_prices': self.prices.get_predicted_prices(),
+        }
+
+        self.baseline_state = {
+            'nodes': np.zeros(MAX_NODES, dtype=np.int32),
+            'job_queue': np.zeros((MAX_QUEUE_SIZE * 2), dtype=np.int32),
         }
 
         return self.state, {}
@@ -141,6 +142,9 @@ class ComputeClusterEnv(gym.Env):
         self.used_nodes = []
         self.job_queue_sizes = []
         self.price_stats = []
+
+        self.eff_score = 0
+        self.baseline_eff_score = 0
 
     def step(self, action):
         self.env_print(f"week: {self.current_week}, hour: {self.current_hour}, step: {self.current_step}, episode: {self.current_episode}")
@@ -210,6 +214,14 @@ class ComputeClusterEnv(gym.Env):
         self.job_queue_sizes.append(num_unprocessed_jobs)
         self.price_stats.append(current_price)
 
+        # baseline
+        baseline_efficiency_score = self.baseline_step(current_price, new_jobs_count, new_jobs_durations)
+        self.baseline_eff_score += baseline_efficiency_score
+        # print(f"baseline_efficiency_score: {baseline_efficiency_score:.15f}")
+        efficiency_score = self.reward_efficiency_normalized(num_used_nodes, num_idle_nodes, current_price)
+        self.eff_score += efficiency_score
+        # print(f"efficiency_score: {efficiency_score:.15f}")
+
         # calculate reward
         reward = self.calculate_reward(num_used_nodes, num_idle_nodes, current_price, average_future_price, num_off_nodes, num_processed_jobs, num_node_changes, job_queue_2d)
         self.episode_reward = self.episode_reward + reward
@@ -237,6 +249,8 @@ class ComputeClusterEnv(gym.Env):
             # TODO: sparse rewards?
 
             if self.render_mode == 'human':
+                print(f"eff_score: {self.eff_score:.15f}")
+                print(f"baseline_eff_score: {self.baseline_eff_score:.15f}")
                 self.plot(EPISODE_HOURS, self.on_nodes, self.used_nodes, self.job_queue_sizes, self.price_stats, True, self.plots_filepath)
 
             terminated = True
@@ -287,6 +301,29 @@ class ComputeClusterEnv(gym.Env):
 
         return num_processed_jobs
 
+    def baseline_step(self, current_price, new_jobs_count, new_jobs_durations):
+        job_queue_2d = self.baseline_state['job_queue'].reshape(-1, 2)
+
+        # Decrement booked time for nodes and complete running jobs
+        self.process_ongoing_jobs(self.baseline_state['nodes'])
+
+        # Update job queue with new jobs. If queue is full, do nothing
+        self.add_new_jobs(job_queue_2d, new_jobs_count, new_jobs_durations)
+
+        # assign jobs to available nodes
+        self.assign_jobs_to_available_nodes(job_queue_2d, self.baseline_state['nodes'])
+
+        num_used_nodes = np.sum(self.baseline_state['nodes'] > 0)
+        num_on_nodes = np.sum(self.baseline_state['nodes'] > -1)
+        num_idle_nodes = num_on_nodes - num_used_nodes
+
+        self.baseline_state['job_queue'] = job_queue_2d.flatten()
+
+        # print(f"baseline: num_on_nodes: {num_on_nodes}, num_used_nodes: {num_used_nodes}, num_idle_nodes: {num_idle_nodes}")
+
+        efficiency_score = self.reward_efficiency_normalized(num_used_nodes, num_idle_nodes, current_price)
+        return efficiency_score
+
     def calculate_reward(self, num_used_nodes, num_idle_nodes, current_price, average_future_price, num_off_nodes, num_processed_jobs, num_node_changes, job_queue_2d):
         # 0. Efficiency. Reward calculation based on Workload (W) / Cost (C)
         efficiency_reward_norm = self.reward_efficiency_normalized(num_used_nodes, num_idle_nodes, current_price)
@@ -317,14 +354,14 @@ class ComputeClusterEnv(gym.Env):
 
         return reward
 
-    def reward_efficiency(self, num_used_nodes, num_idle_nodes, price):
+    def reward_efficiency(self, num_used_nodes, num_idle_nodes, current_price):
         # TODO: Consider incorporating the job queue size or the efficiency of node usage.
         workload = num_used_nodes
-        idle_cost = COST_IDLE * price * num_idle_nodes
-        usage_cost = COST_USED * price * workload
+        idle_cost = COST_IDLE * current_price * num_idle_nodes
+        usage_cost = COST_USED * current_price * workload
         total_cost = idle_cost + usage_cost
         efficiency_reward = workload / (total_cost + 1e-6)
-        # self.env_print(f"$$ workload: {workload}, cost: {COST_IDLE * price * num_idle_nodes + COST_USED * price * num_used_nodes}, efficiency_reward (w/c): {efficiency_reward:.15f}")
+        # self.env_print(f"$$ workload: {workload}, cost: {COST_IDLE * current_price * num_idle_nodes + COST_USED * current_price * num_used_nodes}, efficiency_reward (w/c): {efficiency_reward:.15f}")
         return efficiency_reward
 
     def reward_efficiency_normalized(self, num_used_nodes, num_idle_nodes, current_price):
