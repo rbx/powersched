@@ -172,31 +172,7 @@ class ComputeClusterEnv(gym.Env):
         action_type, action_magnitude = action # Unpack the action array
         action_magnitude += 1
 
-        num_node_changes = 0
-        # Adjust nodes based on action
-        if action_type == 0: # Decrease number of available nodes
-            self.env_print(f"   >>> turning OFF up to {action_magnitude} nodes")
-            nodes_modified = 0
-            for i in range(len(self.state['nodes'])):
-                if self.state['nodes'][i] == 0: # Find the first available node and turn it off
-                    self.state['nodes'][i] = -1
-                    nodes_modified += 1
-                    num_node_changes += 1
-                    if nodes_modified == action_magnitude:  # Stop if enough nodes have been modified
-                        break
-        elif action_type == 1:
-            self.env_print(f"   >>> Not touching any nodes")
-            pass # maintain node count = do nothing
-        elif action_type == 2: # Increase number of available nodes
-            self.env_print(f"   >>> turning ON up to {action_magnitude} nodes")
-            nodes_modified = 0
-            for i in range(len(self.state['nodes'])):
-                if self.state['nodes'][i] == -1: # Find the first off node and make it available
-                    self.state['nodes'][i] = 0
-                    nodes_modified += 1
-                    num_node_changes += 1
-                    if nodes_modified == action_magnitude:  # Stop if enough nodes have been modified
-                        break
+        num_node_changes = self.adjust_nodes(action_type, action_magnitude, self.state['nodes'])
 
         # assign jobs to available nodes
         num_processed_jobs = self.assign_jobs_to_available_nodes(job_queue_2d, self.state['nodes'])
@@ -265,6 +241,11 @@ class ComputeClusterEnv(gym.Env):
 
         return self.state, reward, terminated, truncated, {}
 
+    def process_ongoing_jobs(self, nodes):
+        for i, node_state in enumerate(nodes):
+            if node_state > 0: # If node is booked
+                nodes[i] -= 1 # Decrement the booked time
+
     def add_new_jobs(self, job_queue_2d, new_jobs_count, new_jobs_durations):
         if new_jobs_count > 0:
             for i, new_job_duration in enumerate(new_jobs_durations):
@@ -273,10 +254,35 @@ class ComputeClusterEnv(gym.Env):
                         job_queue_2d[j] = [new_job_duration, 0]
                         break
 
-    def process_ongoing_jobs(self, nodes):
-        for i, node_state in enumerate(nodes):
-            if node_state > 0: # If node is booked
-                nodes[i] -= 1 # Decrement the booked time
+    def adjust_nodes(self, action_type, action_magnitude, nodes):
+        num_node_changes = 0
+
+        # Adjust nodes based on action
+        if action_type == 0: # Decrease number of available nodes
+            self.env_print(f"   >>> turning OFF up to {action_magnitude} nodes")
+            nodes_modified = 0
+            for i in range(len(nodes)):
+                if nodes[i] == 0: # Find the first available node and turn it off
+                    nodes[i] = -1
+                    nodes_modified += 1
+                    num_node_changes += 1
+                    if nodes_modified == action_magnitude:  # Stop if enough nodes have been modified
+                        break
+        elif action_type == 1:
+            self.env_print(f"   >>> Not touching any nodes")
+            pass # maintain node count = do nothing
+        elif action_type == 2: # Increase number of available nodes
+            self.env_print(f"   >>> turning ON up to {action_magnitude} nodes")
+            nodes_modified = 0
+            for i in range(len(nodes)):
+                if nodes[i] == -1: # Find the first off node and make it available
+                    nodes[i] = 0
+                    nodes_modified += 1
+                    num_node_changes += 1
+                    if nodes_modified == action_magnitude:  # Stop if enough nodes have been modified
+                        break
+
+        return num_node_changes
 
     def assign_jobs_to_available_nodes(self, job_queue_2d, nodes):
         num_processed_jobs = 0
