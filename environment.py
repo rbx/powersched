@@ -79,6 +79,9 @@ class ComputeClusterEnv(gym.Env):
         print(f"Price Statistics: {self.prices.get_price_stats()}")
         # self.prices.plot_price_histogram()
 
+        self.min_reward = self.reward_efficiency(0, MAX_NODES, self.prices.MAX_PRICE)
+        self.max_reward = self.reward_efficiency(MAX_NODES, 0, self.prices.MIN_PRICE)
+
         # actions: - change number of available nodes:
         #   direction: 0: decrease, 1: maintain, 2: increase
         #   num nodes: 0-9 (+1ed in the action)
@@ -366,10 +369,8 @@ class ComputeClusterEnv(gym.Env):
     def reward_efficiency_normalized(self, num_used_nodes, num_idle_nodes, current_price):
         current_reward = self.reward_efficiency(num_used_nodes, num_idle_nodes, current_price)
         # self.env_print(f"$$$$$ current_reward: {current_reward}")
-        min_reward = self.reward_efficiency(0, MAX_NODES, self.prices.MAX_PRICE) # TODO: make these constants
-        max_reward = self.reward_efficiency(MAX_NODES, 0, self.prices.MIN_PRICE)
-        normalized_reward = normalize(current_reward, min_reward, max_reward)
-        # self.env_print(f"$$$$$ normalized_reward: {normalized_reward} (min_reward: {min_reward}, max_reward: {max_reward})")
+        normalized_reward = normalize(current_reward, self.min_reward, self.max_reward)
+        # self.env_print(f"$$$$$ normalized_reward: {normalized_reward} (min_reward: {self.min_reward}, max_reward: {self.max_reward})")
         # Clip the value to ensure it's between 0 and 1
         normalized_reward = np.clip(normalized_reward, 0, 1)
         # self.env_print(f"$$$$$ CLIPPED normalized_reward: {normalized_reward}")
