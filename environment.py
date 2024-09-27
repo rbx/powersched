@@ -2,11 +2,11 @@ import time
 
 from gymnasium import spaces
 import gymnasium as gym
-import matplotlib.pyplot as plt
 import numpy as np
 
 from prices import Prices
 from weights import Weights
+from plot import plot, plot_reward
 
 WEEK_HOURS = 168
 
@@ -35,10 +35,6 @@ PENALTY_NODE_CHANGE = -0.05 # Penalty for changing node state
 PENALTY_IDLE_NODE = -0.1 # Penalty for idling nodes
 
 # TODO:
-# - baseline: do nothing: nodes * power * price
-# - baseline: energy price * job duration
-# - baseline: all unused nodes are off (but no job delays)
-#
 # - should the observation space be normalized too?
 
 class ComputeClusterEnv(gym.Env):
@@ -145,6 +141,7 @@ class ComputeClusterEnv(gym.Env):
 
         self.eff_score = 0
         self.baseline_eff_score = 0
+        self.baseline_eff_score_off = 0
 
     def step(self, action):
         self.env_print(f"week: {self.current_week}, hour: {self.current_hour}, step: {self.current_step}, episode: {self.current_episode}")
@@ -191,29 +188,26 @@ class ComputeClusterEnv(gym.Env):
         self.price_stats.append(current_price)
 
         # baseline
-        baseline_efficiency_score = self.baseline_step(current_price, new_jobs_count, new_jobs_durations)
-        self.baseline_eff_score += baseline_efficiency_score
-        # print(f"baseline_efficiency_score: {baseline_efficiency_score:.15f}")
-        efficiency_score = self.reward_efficiency_normalized(num_used_nodes, num_idle_nodes, current_price)
-        self.eff_score += efficiency_score
-        # print(f"efficiency_score: {efficiency_score:.15f}")
+        baseline_eff_score, baseline_eff_score_off = self.baseline_step(current_price, new_jobs_count, new_jobs_durations)
+        self.baseline_eff_score += baseline_eff_score
+        self.baseline_eff_score_off += baseline_eff_score_off
 
         # calculate reward
-        reward = self.calculate_reward(num_used_nodes, num_idle_nodes, current_price, average_future_price, num_off_nodes, num_processed_jobs, num_node_changes, job_queue_2d)
+        reward, eff_score = self.calculate_reward(num_used_nodes, num_idle_nodes, current_price, average_future_price, num_off_nodes, num_processed_jobs, num_node_changes, job_queue_2d)
         self.episode_reward = self.episode_reward + reward
+        self.eff_score += eff_score
+        self.env_print(f"> eff_score: {eff_score}")
 
         # print stats
-        self.env_print(f"num_on_nodes: {num_on_nodes}, num_off_nodes: {num_off_nodes}, num_used_nodes: {num_used_nodes}, num_idle_nodes: {num_idle_nodes}, num_node_changes: {num_node_changes}")
-        self.env_print(f"num_processed_jobs: {num_processed_jobs}, num_unprocessed_jobs: {num_unprocessed_jobs}")
-        self.env_print(f"$$ current_price: {current_price}")
-        self.env_print(f"$$ average_future_price: {average_future_price}")
+        self.env_print(f"nodes: ON: {num_on_nodes}, OFF: {num_off_nodes}, used: {num_used_nodes}, IDLE: {num_idle_nodes}. node changes: {num_node_changes}")
         self.env_print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
-        self.env_print("job_queue: ", ' '.join(['[{}]'.format(' '.join(map(str, pair))) for pair in job_queue_2d if not np.array_equal(pair, np.array([0, 0]))]))
-        self.env_print(f"total reward: {reward:.15f}")
-        self.env_print(f"episode reward: {self.episode_reward:.15f}\n")
+        self.env_print(f"price: current: {current_price}, average future: {average_future_price}")
+        self.env_print(f"processed jobs: {num_processed_jobs}, unprocessed jobs: {num_unprocessed_jobs}")
+        self.env_print("job queue: ", ' '.join(['[{}]'.format(' '.join(map(str, pair))) for pair in job_queue_2d if not np.array_equal(pair, np.array([0, 0]))]))
+        self.env_print(f"step reward: {reward}, episode reward: {self.episode_reward}\n")
 
         if self.plot_rewards:
-            self.plot_reward(num_used_nodes, num_idle_nodes, current_price, num_off_nodes, average_future_price, num_processed_jobs, num_node_changes, job_queue_2d)
+            plot_reward(num_used_nodes, num_idle_nodes, current_price, num_off_nodes, average_future_price, num_processed_jobs, num_node_changes, job_queue_2d, MAX_NODES)
 
         truncated = False
         terminated = False
@@ -225,9 +219,10 @@ class ComputeClusterEnv(gym.Env):
             # TODO: sparse rewards?
 
             if self.render_mode == 'human':
-                print(f"eff_score: {self.eff_score:.15f}")
-                print(f"baseline_eff_score: {self.baseline_eff_score:.15f}")
-                self.plot(EPISODE_HOURS, self.on_nodes, self.used_nodes, self.job_queue_sizes, self.price_stats, True, self.plots_filepath)
+                print(f"eff_score: {self.eff_score}")
+                # print(f"baseline_eff_score: {self.baseline_eff_score:.15f}")
+                # print(f"baseline_eff_score_off: {self.baseline_eff_score_off:.15f}")
+                plot(self, EPISODE_HOURS, MAX_NODES)
 
             terminated = True
 
@@ -310,13 +305,10 @@ class ComputeClusterEnv(gym.Env):
     def baseline_step(self, current_price, new_jobs_count, new_jobs_durations):
         job_queue_2d = self.baseline_state['job_queue'].reshape(-1, 2)
 
-        # Decrement booked time for nodes and complete running jobs
         self.process_ongoing_jobs(self.baseline_state['nodes'])
 
-        # Update job queue with new jobs. If queue is full, do nothing
         self.add_new_jobs(job_queue_2d, new_jobs_count, new_jobs_durations)
 
-        # assign jobs to available nodes
         self.assign_jobs_to_available_nodes(job_queue_2d, self.baseline_state['nodes'])
 
         num_used_nodes = np.sum(self.baseline_state['nodes'] > 0)
@@ -325,13 +317,14 @@ class ComputeClusterEnv(gym.Env):
 
         self.baseline_state['job_queue'] = job_queue_2d.flatten()
 
-        # print(f"baseline: num_on_nodes: {num_on_nodes}, num_used_nodes: {num_used_nodes}, num_idle_nodes: {num_idle_nodes}")
-
         efficiency_score = self.reward_efficiency_normalized(num_used_nodes, num_idle_nodes, current_price)
-        return efficiency_score
+        self.env_print(f"> baseline_eff_score: {efficiency_score} (used nodes: {num_used_nodes}, idle nodes: {num_idle_nodes})")
+        efficiency_score_off = self.reward_efficiency_normalized(num_used_nodes, 0, current_price)
+        self.env_print(f"> baseline_eff_score_off: {efficiency_score_off} (used nodes: {num_used_nodes}, idle nodes: 0)")
+        return efficiency_score, efficiency_score_off
 
     def calculate_reward(self, num_used_nodes, num_idle_nodes, current_price, average_future_price, num_off_nodes, num_processed_jobs, num_node_changes, job_queue_2d):
-        # 0. Efficiency. Reward calculation based on Workload (W) / Cost (C)
+        # 0. Efficiency. Reward calculation based on Workload (used nodes) (W) / Cost (C)
         efficiency_reward_norm = self.reward_efficiency_normalized(num_used_nodes, num_idle_nodes, current_price)
 
         # 1. increase reward for each turned off node, more if the current price is higher than average
@@ -358,29 +351,28 @@ class ComputeClusterEnv(gym.Env):
             + self.weights.idle_weight * idle_penalty_norm
         )
 
-        return reward
+        return reward, efficiency_reward_norm
 
     def reward_efficiency(self, num_used_nodes, num_idle_nodes, current_price):
         # TODO: Consider incorporating the job queue size or the efficiency of node usage.
-        workload = num_used_nodes
         idle_cost = COST_IDLE * current_price * num_idle_nodes
-        usage_cost = COST_USED * current_price * workload
+        usage_cost = COST_USED * current_price * num_used_nodes
         total_cost = idle_cost + usage_cost
-        efficiency_reward = workload / (total_cost + 1e-6)
-        # self.env_print(f"$$ workload: {workload}, cost: {COST_IDLE * current_price * num_idle_nodes + COST_USED * current_price * num_used_nodes}, efficiency_reward (w/c): {efficiency_reward:.15f}")
+        efficiency_reward = num_used_nodes / (total_cost + 1e-6)
+        # self.env_print(f"$$EFF total_cost: {total_cost} = idle_cost: {idle_cost} + usage_cost: {usage_cost}")
+        # self.env_print(f"$$EFF num_used_nodes: {num_used_nodes}, num_idle_nodes: {num_idle_nodes}, cost: {COST_IDLE * current_price * num_idle_nodes + COST_USED * current_price * num_used_nodes}, efficiency_reward (w/c): {efficiency_reward:.15f}")
         return efficiency_reward
 
     def reward_efficiency_normalized(self, num_used_nodes, num_idle_nodes, current_price):
-        # normalization: logarithmic|min-max|z-score|exponential moving average|
         current_reward = self.reward_efficiency(num_used_nodes, num_idle_nodes, current_price)
-        # self.env_print(f"$$ current_reward: {current_reward}")
-        min_reward = self.reward_efficiency(0, MAX_NODES, self.prices.MAX_PRICE)
+        # self.env_print(f"$$$$$ current_reward: {current_reward}")
+        min_reward = self.reward_efficiency(0, MAX_NODES, self.prices.MAX_PRICE) # TODO: make these constants
         max_reward = self.reward_efficiency(MAX_NODES, 0, self.prices.MIN_PRICE)
         normalized_reward = normalize(current_reward, min_reward, max_reward)
-        # self.env_print(f"$$ normalized_reward: {normalized_reward} (min_reward: {min_reward}, max_reward: {max_reward})")
+        # self.env_print(f"$$$$$ normalized_reward: {normalized_reward} (min_reward: {min_reward}, max_reward: {max_reward})")
         # Clip the value to ensure it's between 0 and 1
         normalized_reward = np.clip(normalized_reward, 0, 1)
-        # self.env_print(f"$$ CLIPPED normalized_reward: {normalized_reward}")
+        # self.env_print(f"$$$$$ CLIPPED normalized_reward: {normalized_reward}")
         return normalized_reward
 
     def reward_turned_off(self, num_off_nodes, average_future_price, current_price):
@@ -437,74 +429,6 @@ class ComputeClusterEnv(gym.Env):
         normalized_penalty = np.clip(normalized_penalty, -1, 0)
         # self.env_print(f"$$ CLIPPED normalized_penalty: {normalized_penalty}")
         return normalized_penalty
-
-    def plot(self, num_hours, on_nodes, used_nodes, job_queue_sizes, prices, use_lines, plots_dir):
-        hours = np.arange(num_hours)
-
-        fig, ax1 = plt.subplots(figsize=(12, 6))
-
-        color = 'tab:blue'
-        ax1.set_xlabel('Hours')
-        ax1.set_ylabel('Electricity Price ($/MWh)', color=color)
-        ax1.plot(hours, prices, color=color, label='Electricity Price ($/MWh)')
-        ax1.tick_params(axis='y', labelcolor=color)
-
-        ax2 = ax1.twinx()
-        color = 'tab:orange'
-        ax2.set_ylabel('Count', color=color)
-
-        if use_lines:
-            ax2.plot(hours, on_nodes, color='orange', label='Online Nodes')
-            ax2.plot(hours, used_nodes, color='green', label='Used Nodes')
-            ax2.plot(hours, job_queue_sizes, color='red', label='Job Queue Size')
-        else:
-            ax2.bar(hours - 0.3, on_nodes, width=0.3, color='orange', label='Online Nodes')
-            ax2.bar(hours, used_nodes, width=0.3, color='green', label='Used Nodes')
-            ax2.bar(hours + 0.3, job_queue_sizes, width=0.3, color='red', label='Job Queue Size')
-
-        ax2.tick_params(axis='y', labelcolor=color)
-        ax2.set_ylim(0, MAX_NODES)
-
-        plt.title(f"session: {self.session}, step: {self.current_step}, episode: {self.current_episode}\nweights: {self.weights}\nElectricity Price and Compute Cluster Usage Over Time.")
-        lines, labels = ax1.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax1.legend(lines + lines2, labels + labels2, loc='upper left')
-
-        plt.savefig(self.plots_filepath)
-        print(f"Figure saved as: {self.plots_filepath}")
-        plt.show()
-        plt.close(fig)
-
-    def plot_reward(self, num_used_nodes, num_idle_nodes, current_price, num_off_nodes, average_future_price, num_processed_jobs, num_node_changes, job_queue_2d):
-        used_nodes, idle_nodes, rewards = [], [], []
-
-        for i in range(MAX_NODES + 1):
-            for j in range(MAX_NODES + 1 - i):
-                reward = self.calculate_reward(i, j, current_price, average_future_price, num_off_nodes, num_processed_jobs, num_node_changes, job_queue_2d)
-                used_nodes.append(i)
-                idle_nodes.append(j)
-                rewards.append(reward)
-
-        plt.figure(figsize=(14, 12))
-
-        scatter = plt.scatter(used_nodes, idle_nodes, c=rewards, cmap='viridis', s=50)
-        plt.colorbar(scatter, label='Reward')
-
-        plt.xlabel('Number of Used Nodes')
-        plt.ylabel('Number of Idle Nodes')
-
-        title = f"session: {self.session}, step: {self.current_step}, episode: {self.current_episode}\ncurrent_price: {current_price:.2f}, average_future_price: {average_future_price:.2f}\nnum_processed_jobs: {num_processed_jobs}, num_node_changes: {num_node_changes}, num_off_nodes: {num_off_nodes}"
-        plt.title(title, fontsize=10)
-
-        plt.plot([0, MAX_NODES], [MAX_NODES, 0], 'r--', linewidth=2, label='Max Nodes Constraint')
-        plt.plot([0, MAX_NODES - num_off_nodes], [MAX_NODES - num_off_nodes, 0], 'b--', linewidth=2, label='Online/Offline Separator')
-
-        current_reward = self.calculate_reward(num_used_nodes, num_idle_nodes, current_price, average_future_price, MAX_NODES - num_used_nodes - num_idle_nodes, num_processed_jobs, num_node_changes)
-        plt.scatter(num_used_nodes, num_idle_nodes, color='red', s=100, zorder=5, label=f'Current Reward: {current_reward:.2f}')
-
-        plt.legend()
-        plt.tight_layout()
-        plt.show()
 
 def normalize(current, minimum, maximum):
     return (current - minimum) / (maximum - minimum)
