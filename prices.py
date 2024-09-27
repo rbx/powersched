@@ -8,10 +8,18 @@ class Prices:
     PREDICTION_WINDOW = 24
 
     def __init__(self, external_prices=None):
-        self.external_prices = external_prices
+        self.original_prices = external_prices
         self.price_index = 0
+        self.price_shift = 0
 
-        if self.external_prices is not None:
+        if self.original_prices is not None:
+            min_price = np.min(self.original_prices)
+            if min_price < 1:
+                self.price_shift = 1 - min_price
+                self.external_prices = [price + self.price_shift for price in self.original_prices]
+            else:
+                self.external_prices = self.original_prices.copy()
+
             self.MIN_PRICE = np.percentile(self.external_prices, self.PERCENTILE_MIN)
             self.MAX_PRICE = np.percentile(self.external_prices, self.PERCENTILE_MAX)
             self.predicted_prices = np.array(self.external_prices[:self.PREDICTION_WINDOW])
@@ -20,6 +28,9 @@ class Prices:
             self.MAX_PRICE = 24
             self.MIN_PRICE = 16
             self.predicted_prices = self.get_initial_prices(self.PREDICTION_WINDOW)
+
+    def get_real_price(self, shifted_price):
+        return shifted_price - self.price_shift
 
     def get_initial_prices(self, num_hours):
         if self.external_prices is not None:
@@ -49,19 +60,24 @@ class Prices:
         self.predicted_prices[-1] = new_price
         return self.predicted_prices.copy()
 
-    def plot_price_histogram(self, num_bins=50, save_path=None):
-        if self.external_prices is not None:
+    def plot_price_histogram(self, num_bins=50, save_path=None, use_original=False):
+        if use_original and self.original_prices is not None:
+            prices = self.original_prices
+            price_type = "Original"
+        elif self.external_prices is not None:
             prices = self.external_prices
+            price_type = "Shifted" if self.price_shift else "Original"
         else:
             prices = [self.get_next_price() for _ in range(24 * 7 * 52)]  # Generate a year's worth of prices
+            price_type = "Generated"
 
         plt.figure(figsize=(10, 6))
         plt.hist(prices, bins=num_bins, edgecolor='black')
-        plt.title('Distribution of Electricity Prices')
-        plt.xlabel('Price ($/MWh)')
+        plt.title(f'Distribution of Electricity Prices ({price_type})')
+        plt.xlabel(f'Price ($/MWh)')
         plt.ylabel('Frequency')
-        plt.axvline(self.MIN_PRICE, color='r', linestyle='dashed', linewidth=2, label=f'{self.PERCENTILE_MIN}th Percentile')
-        plt.axvline(self.MAX_PRICE, color='g', linestyle='dashed', linewidth=2, label=f'{self.PERCENTILE_MAX}th Percentile')
+        plt.axvline(np.percentile(prices, self.PERCENTILE_MIN), color='r', linestyle='dashed', linewidth=2, label=f'{self.PERCENTILE_MIN}th Percentile')
+        plt.axvline(np.percentile(prices, self.PERCENTILE_MAX), color='g', linestyle='dashed', linewidth=2, label=f'{self.PERCENTILE_MAX}th Percentile')
         plt.axvline(np.mean(prices), color='b', linestyle='dashed', linewidth=2, label='Mean Price')
         plt.legend()
 
@@ -72,8 +88,10 @@ class Prices:
             plt.show()
         plt.close()
 
-    def get_price_stats(self):
-        if self.external_prices is not None:
+    def get_price_stats(self, use_original=False):
+        if use_original and self.original_prices is not None:
+            prices = self.original_prices
+        elif self.external_prices is not None:
             prices = self.external_prices
         else:
             prices = [self.get_next_price() for _ in range(24 * 7 * 52)]  # Generate a year's worth of prices
@@ -84,6 +102,7 @@ class Prices:
             'mean': np.mean(prices),
             'median': np.median(prices),
             'std': np.std(prices),
-            f'{self.PERCENTILE_MIN}th_percentile': self.MIN_PRICE,
-            f'{self.PERCENTILE_MAX}th_percentile': self.MAX_PRICE
+            f'{self.PERCENTILE_MIN}th_percentile': np.percentile(prices, self.PERCENTILE_MIN),
+            f'{self.PERCENTILE_MAX}th_percentile': np.percentile(prices, self.PERCENTILE_MAX),
+            'price_shift': self.price_shift
         }

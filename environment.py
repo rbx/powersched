@@ -77,7 +77,7 @@ class ComputeClusterEnv(gym.Env):
         print(f"weights: {self.weights}")
         print(f"prices.MAX_PRICE: {self.prices.MAX_PRICE}, prices.MIN_PRICE: {self.prices.MIN_PRICE}")
         print(f"Price Statistics: {self.prices.get_price_stats()}")
-        # self.prices.plot_price_histogram()
+        # self.prices.plot_price_histogram(use_original=False)
 
         self.min_reward = self.reward_efficiency(0, MAX_NODES, self.prices.MAX_PRICE)
         self.max_reward = self.reward_efficiency(MAX_NODES, 0, self.prices.MIN_PRICE)
@@ -223,8 +223,8 @@ class ComputeClusterEnv(gym.Env):
 
             if self.render_mode == 'human':
                 print(f"eff_score: {self.eff_score}")
-                # print(f"baseline_eff_score: {self.baseline_eff_score:.15f}")
-                # print(f"baseline_eff_score_off: {self.baseline_eff_score_off:.15f}")
+                print(f"baseline_eff_score: {self.baseline_eff_score:.15f}")
+                print(f"baseline_eff_score_off: {self.baseline_eff_score_off:.15f}")
                 plot(self, EPISODE_HOURS, MAX_NODES)
 
             terminated = True
