@@ -23,7 +23,7 @@ def plot(env, num_hours, max_nodes):
     ax2.tick_params(axis='y', labelcolor=color)
     ax2.set_ylim(0, max_nodes)
 
-    plt.title(f"session: {env.session}, step: {env.current_step}, episode: {env.current_episode}\nweights: {env.weights}\nEff: {env.eff_score}, Base_Eff: {env.baseline_eff_score}, Base_Eff_Off: {env.baseline_eff_score_off}")
+    plt.title(f"session: {env.session}, episode: {env.current_episode}, step: {env.current_step}\n{env.weights}\nEff: {env.eff_score}, Base_Eff: {env.baseline_eff_score}, Base_Eff_Off: {env.baseline_eff_score_off}")
     lines, labels = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines + lines2, labels + labels2, loc='upper left')
@@ -57,7 +57,7 @@ def plot_reward(env, num_used_nodes, num_idle_nodes, current_price, num_off_node
     plt.plot([0, max_nodes], [max_nodes, 0], 'r--', linewidth=2, label='Max Nodes Constraint')
     plt.plot([0, max_nodes - num_off_nodes], [max_nodes - num_off_nodes, 0], 'b--', linewidth=2, label='Online/Offline Separator')
 
-    current_reward, _ = env.calculate_reward(num_used_nodes, num_idle_nodes, current_price, average_future_price, max_nodes - num_used_nodes - num_idle_nodes, num_processed_jobs, num_node_changes)
+    current_reward, _ = env.calculate_reward(num_used_nodes, num_idle_nodes, current_price, average_future_price, max_nodes - num_used_nodes - num_idle_nodes, num_processed_jobs, num_node_changes, job_queue_2d)
     plt.scatter(num_used_nodes, num_idle_nodes, color='red', s=100, zorder=5, label=f'Current Reward: {current_reward:.2f}')
 
     plt.legend()

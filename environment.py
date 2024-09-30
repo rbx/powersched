@@ -147,7 +147,7 @@ class ComputeClusterEnv(gym.Env):
         self.baseline_eff_score_off = 0
 
     def step(self, action):
-        self.env_print(f"week: {self.current_week}, hour: {self.current_hour}, step: {self.current_step}, episode: {self.current_episode}")
+        self.env_print(f"episode: {self.current_episode}, week: {self.current_week}, step: {self.current_step}, hour: {self.current_hour}")
         self.current_step += 1
 
         self.state['predicted_prices'] = self.prices.get_predicted_prices()
@@ -210,7 +210,7 @@ class ComputeClusterEnv(gym.Env):
         self.env_print(f"step reward: {reward}, episode reward: {self.episode_reward}\n")
 
         if self.plot_rewards:
-            plot_reward(num_used_nodes, num_idle_nodes, current_price, num_off_nodes, average_future_price, num_processed_jobs, num_node_changes, job_queue_2d, MAX_NODES)
+            plot_reward(self, num_used_nodes, num_idle_nodes, current_price, num_off_nodes, average_future_price, num_processed_jobs, num_node_changes, job_queue_2d, MAX_NODES)
 
         truncated = False
         terminated = False
