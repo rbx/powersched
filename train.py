@@ -28,9 +28,8 @@ def main():
     if csv_file_path:
         df = pd.read_csv(csv_file_path, parse_dates=['Date'])
         prices = df['Price'].values.tolist()
-        # Print the first few prices to verify
-        print(f"Loaded {len(prices)} prices from CSV.")
-        print("First few prices:", prices[:30])
+        print(f"Loaded {len(prices)} prices from CSV: {csv_file_path}")
+        # print("First few prices:", prices[:30])
     else:
         prices = None
         print("No CSV file provided. Using default price generation.")
@@ -75,6 +74,7 @@ def main():
         print(f"Found a saved model: {latest_model_file}, continuing training from it.")
         model = PPO.load(latest_model_file, env=env, tensorboard_log=log_dir)
     else:
+        print(f"Starting a new model training...")
         model = PPO('MultiInputPolicy', env, verbose=1, tensorboard_log=log_dir, ent_coef=args.ent_coef)
 
     iters = 0
@@ -92,7 +92,7 @@ def main():
 
     try:
         while True:
-            print(f"iter {iters}")
+            print(f"Training iteration {iters} ({TIMESTEPS * iters} steps)...")
             iters += 1
             if args.iter_limit > 0 and iters > args.iter_limit:
                 print(f"iterations limit ({args.iter_limit}) reached: {iters}.")
