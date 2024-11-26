@@ -3,10 +3,13 @@ import time
 from gymnasium import spaces
 import gymnasium as gym
 import numpy as np
+from colorama import init, Fore
 
 from prices import Prices
 from weights import Weights
 from plot import plot, plot_reward
+
+init()  # Initialize colorama
 
 WEEK_HOURS = 168
 
@@ -147,9 +150,8 @@ class ComputeClusterEnv(gym.Env):
         self.baseline_eff_score_off = 0
 
     def step(self, action):
-        self.env_print(f"\n#######################")
-        self.env_print(f"episode: {self.current_episode}, week: {self.current_week}, step: {self.current_step}, hour: {self.current_hour}")
-        self.env_print(f"#######################")
+        self.env_print(Fore.GREEN + f"\nepisode: {self.current_episode}, week: {self.current_week}, step: {self.current_step}, hour: {self.current_hour}")
+        self.env_print(Fore.RESET)
         self.current_step += 1
 
         self.state['predicted_prices'] = self.prices.get_predicted_prices()
