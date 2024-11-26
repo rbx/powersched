@@ -1,7 +1,7 @@
 from stable_baselines3 import PPO
 import os
 from datetime import datetime
-from environment import ComputeClusterEnv, Weights
+from environment import ComputeClusterEnv, Weights, PlottingComplete
 import re
 import glob
 import argparse
@@ -13,6 +13,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run the Compute Cluster Environment with optional rendering.")
     parser.add_argument('--render', type=str, default='none', choices=['human', 'none'], help='Render mode for the environment (default: none).')
     parser.add_argument('--quick-plot', action='store_true', help='In "human" render mode, skip quickly to the plot (default: False).')
+    parser.add_argument('--plot-once', action='store_true', help='In "human" render mode, exit after the first plot.')
     parser.add_argument('--prices', type=str, nargs='?', const="", default="", help='Path to the CSV file containing electricity prices (Date,Price)')
     parser.add_argument('--plot-rewards', action='store_true', help='Per step, plot rewards for all possible num_idle_nodes & num_used_nodes (default: False).')
     parser.add_argument('--ent-coef', type=float, default=0.0, help='Entropy coefficient for the loss calculation (default: 0.0) (Passed to PPO).')
@@ -61,7 +62,8 @@ def main():
                             quick_plot=args.quick_plot,
                             external_prices=prices,
                             plot_rewards=args.plot_rewards,
-                            plots_filepath=plots_filepath)
+                            plots_filepath=plots_filepath,
+                            plot_once=args.plot_once)
     env.reset()
 
     # Check if there are any saved models in models_dir
@@ -97,13 +99,14 @@ def main():
             if args.iter_limit > 0 and iters > args.iter_limit:
                 print(f"iterations limit ({args.iter_limit}) reached: {iters}.")
                 break
-            model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name=f"PPO")
-            model.save(f"{models_dir}/{TIMESTEPS * iters}.zip")
+            try:
+                model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name=f"PPO")
+                model.save(f"{models_dir}/{TIMESTEPS * iters}.zip")
+            except PlottingComplete:
+                print("Plotting complete, terminating training...")
+                break
     except KeyboardInterrupt:
         print("Training interrupted by user.")
-        # print("Training interrupted by user, attempting to save the current model...")
-        # model.save(f"{models_dir}/interrupted_{TIMESTEPS * iters}.zip")
-        # print("Model saved successfully.")
     finally:
         print("Exiting training...")
         env.close()

@@ -3,27 +3,44 @@ import numpy as np
 
 def plot(env, num_hours, max_nodes):
     hours = np.arange(num_hours)
-
     fig, ax1 = plt.subplots(figsize=(12, 6))
 
+    # Left y-axis for electricity price
     color = 'tab:blue'
     ax1.set_xlabel('Hours')
-    ax1.set_ylabel('Electricity Price ($/MWh)', color=color)
-    ax1.plot(hours, env.price_stats, color=color, label='Electricity Price ($/MWh)')
+    ax1.set_ylabel('Electricity Price (€/MWh)', color=color)
+    ax1.plot(hours, env.price_stats, color=color, label='Electricity Price (€/MWh)')
     ax1.tick_params(axis='y', labelcolor=color)
 
+    # Right y-axis for counts and rewards
     ax2 = ax1.twinx()
-    color = 'tab:orange'
-    ax2.set_ylabel('Count', color=color)
+    ax2.set_ylabel('Count / Rewards', color='tab:orange')
 
+    # Original metrics
     ax2.plot(hours, env.on_nodes, color='orange', label='Online Nodes')
     ax2.plot(hours, env.used_nodes, color='green', label='Used Nodes')
     ax2.plot(hours, env.job_queue_sizes, color='red', label='Job Queue Size')
 
-    ax2.tick_params(axis='y', labelcolor=color)
+    # New metrics with dashed lines
+    ax2.plot(hours, env.eff_rewards, color='brown', linestyle='--', label='Efficiency Rewards')
+    ax2.plot(hours, env.price_rewards, color='blue', linestyle='--', label='Price Rewards')
+    # ax2.plot(hours, env.idle_penalties, color='green', linestyle='--', label='Idle Penalties')
+
+    ax2.tick_params(axis='y')
     ax2.set_ylim(0, max_nodes)
 
-    plt.title(f"session: {env.session}, episode: {env.current_episode}, step: {env.current_step}\n{env.weights}\nEff: {env.eff_score}, Base_Eff: {env.baseline_eff_score}, Base_Eff_Off: {env.baseline_eff_score_off}")
+    plt.title(f"session: {env.session}, "
+              f"episode: {env.current_episode}, step: {env.current_step}\n"
+              f"{env.weights}\n"
+              f"Cost: €{env.total_cost:.2f}, "
+              f"Base_Cost: €{env.baseline_cost:.2f} "
+              f"({'+' if env.baseline_cost - env.total_cost >= 0 else '-'}"
+              f"{abs(env.baseline_cost - env.total_cost):.2f}), "
+              f"Base_Cost_Off: €{env.baseline_cost_off:.2f} "
+              f"({'+' if env.baseline_cost_off - env.total_cost >= 0 else '-'}"
+              f"{abs(env.baseline_cost_off - env.total_cost):.2f})")
+
+    # Combine legends from both axes
     lines, labels = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines + lines2, labels + labels2, loc='upper left')
