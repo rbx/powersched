@@ -2,3 +2,4 @@ stable-baselines3
 gymnasium
 tensorboard
 matplotlib
+colorama
