@@ -1,7 +1,8 @@
 import matplotlib.pyplot as plt
+from datetime import datetime
 import numpy as np
 
-def plot(env, num_hours, max_nodes):
+def plot(env, num_hours, max_nodes, save=True, show=True, suffix=""):
     hours = np.arange(num_hours)
     fig, ax1 = plt.subplots(figsize=(12, 6))
 
@@ -22,12 +23,18 @@ def plot(env, num_hours, max_nodes):
     ax2.plot(hours, env.job_queue_sizes, color='red', label='Job Queue Size')
 
     # New metrics with dashed lines
-    ax2.plot(hours, env.eff_rewards, color='brown', linestyle='--', label='Efficiency Rewards')
-    ax2.plot(hours, env.price_rewards, color='blue', linestyle='--', label='Price Rewards')
-    # ax2.plot(hours, env.idle_penalties, color='green', linestyle='--', label='Idle Penalties')
+    if env.plot_eff_reward:
+        ax2.plot(hours, env.eff_rewards, color='brown', linestyle='--', label='Efficiency Rewards')
+    if env.plot_price_reward:
+        ax2.plot(hours, env.price_rewards, color='blue', linestyle='--', label='Price Rewards')
+    if env.plot_idle_penalty:
+        ax2.plot(hours, env.idle_penalties, color='green', linestyle='--', label='Idle Penalties')
 
     ax2.tick_params(axis='y')
-    ax2.set_ylim(0, max_nodes)
+    if env.plot_idle_penalty:
+        ax2.set_ylim(-100, max_nodes)
+    else:
+        ax2.set_ylim(0, max_nodes)
 
     plt.title(f"session: {env.session}, "
               f"episode: {env.current_episode}, step: {env.current_step}\n"
@@ -45,9 +52,13 @@ def plot(env, num_hours, max_nodes):
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines + lines2, labels + labels2, loc='upper left')
 
-    plt.savefig(env.plots_filepath)
-    print(f"Figure saved as: {env.plots_filepath}")
-    plt.show()
+    if save:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        plt.savefig(f"{env.plots_fileprefix}_{suffix}_{timestamp}.png")
+        print(f"Figure saved as: {env.plots_fileprefix}_{suffix}_{timestamp}.png\nExpecting next save after {env.next_plot_save + env.steps_per_iteration}")
+    if show:
+        plt.show()
+
     plt.close(fig)
 
 def plot_reward(env, num_used_nodes, num_idle_nodes, current_price, num_off_nodes, average_future_price, num_processed_jobs, num_node_changes, job_queue_2d, max_nodes):

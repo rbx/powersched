@@ -55,17 +55,18 @@ class ComputeClusterEnv(gym.Env):
     def render(self, mode='human'):
         self.render_mode = mode
 
-    def set_progress(self, iterations, timesteps):
-        self.current_step = iterations * timesteps
+    def set_progress(self, iterations):
+        self.current_step = iterations * self.steps_per_iteration
         self.current_episode = self.current_step // EPISODE_HOURS
         self.current_week = self.current_step // WEEK_HOURS
+        self.next_plot_save = iterations * self.steps_per_iteration + EPISODE_HOURS
 
     def env_print(self, *args):
         """Prints only if the render mode is 'human'."""
         if self.render_mode == 'human':
             print(*args)
 
-    def __init__(self, weights: Weights, session, render_mode, quick_plot, external_prices, plot_rewards, plots_filepath, plot_once):
+    def __init__(self, weights: Weights, session, render_mode, quick_plot, external_prices, plot_rewards, plots_fileprefix, plot_once, plot_eff_reward, plot_price_reward, plot_idle_penalty, steps_per_iteration):
         super().__init__()
 
         self.weights = weights
@@ -75,7 +76,12 @@ class ComputeClusterEnv(gym.Env):
         self.plot_once = plot_once
         self.external_prices = external_prices
         self.plot_rewards = plot_rewards
-        self.plots_filepath = plots_filepath
+        self.plots_fileprefix = plots_fileprefix
+        self.plot_eff_reward = plot_eff_reward
+        self.plot_price_reward = plot_price_reward
+        self.plot_idle_penalty = plot_idle_penalty
+        self.steps_per_iteration = steps_per_iteration
+        self.next_plot_save = self.steps_per_iteration
 
         self.prices = Prices(self.external_prices)
 
@@ -246,9 +252,14 @@ class ComputeClusterEnv(gym.Env):
                 print(f"total_cost: {self.total_cost}")
                 print(f"baseline_cost: {self.baseline_cost:.4f}")
                 print(f"baseline_cost_off: {self.baseline_cost_off:.4f}")
-                plot(self, EPISODE_HOURS, MAX_NODES)
+                plot(self, EPISODE_HOURS, MAX_NODES, False, True, self.current_step)
                 if self.plot_once:
                     raise PlottingComplete
+            else:
+                if self.current_step > self.next_plot_save:
+                    plot(self, EPISODE_HOURS, MAX_NODES, True, False, self.current_step)
+                    self.next_plot_save += self.steps_per_iteration
+                    print(self.next_plot_save)
 
             terminated = True
 

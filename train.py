@@ -1,13 +1,12 @@
 from stable_baselines3 import PPO
 import os
-from datetime import datetime
 from environment import ComputeClusterEnv, Weights, PlottingComplete
 import re
 import glob
 import argparse
 import pandas as pd
 
-TIMESTEPS = 100000
+STEPS_PER_ITERATION = 100000
 
 def main():
     parser = argparse.ArgumentParser(description="Run the Compute Cluster Environment with optional rendering.")
@@ -16,11 +15,14 @@ def main():
     parser.add_argument('--plot-once', action='store_true', help='In "human" render mode, exit after the first plot.')
     parser.add_argument('--prices', type=str, nargs='?', const="", default="", help='Path to the CSV file containing electricity prices (Date,Price)')
     parser.add_argument('--plot-rewards', action='store_true', help='Per step, plot rewards for all possible num_idle_nodes & num_used_nodes (default: False).')
+    parser.add_argument('--plot-eff-reward', action='store_true', help='Include efficiency reward in the plot (dashes line).')
+    parser.add_argument('--plot-price-reward', action='store_true', help='Include price reward in the plot (dashes line).')
+    parser.add_argument('--plot-idle-penalty', action='store_true', help='Include idle penalty in the plot (dashes line).')
     parser.add_argument('--ent-coef', type=float, default=0.0, help='Entropy coefficient for the loss calculation (default: 0.0) (Passed to PPO).')
     parser.add_argument("--efficiency-weight", type=float, default=0.7, help="Weight for efficiency reward")
     parser.add_argument("--price-weight", type=float, default=0.2, help="Weight for price reward")
     parser.add_argument("--idle-weight", type=float, default=0.1, help="Weight for idle penalty")
-    parser.add_argument("--iter-limit", type=int, default=0, help=f"Max number of training iterations (1 iteration = {TIMESTEPS} steps)")
+    parser.add_argument("--iter-limit", type=int, default=0, help=f"Max number of training iterations (1 iteration = {STEPS_PER_ITERATION} steps)")
     parser.add_argument("--session", default="default", help="Session ID")
 
     args = parser.parse_args()
@@ -43,9 +45,10 @@ def main():
 
     models_dir = f"models/{args.session}_e{args.efficiency_weight}_p{args.price_weight}_i{args.idle_weight}/"
     log_dir = f"logs/{args.session}_e{args.efficiency_weight}_p{args.price_weight}_i{args.idle_weight}/"
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     plots_dir = "plots/"
-    plots_filepath = f"{plots_dir}{args.session}_e{args.efficiency_weight}_p{args.price_weight}_i{args.idle_weight}_{timestamp}.png"
+    plots_fileprefix = f"{plots_dir}{args.session}_e{args.efficiency_weight}_p{args.price_weight}_i{args.idle_weight}"
+
+    print(f"Will be saving plots with '{plots_fileprefix}' prefix.")
 
     if not os.path.exists(models_dir):
         os.makedirs(models_dir)
@@ -62,8 +65,12 @@ def main():
                             quick_plot=args.quick_plot,
                             external_prices=prices,
                             plot_rewards=args.plot_rewards,
-                            plots_filepath=plots_filepath,
-                            plot_once=args.plot_once)
+                            plots_fileprefix=plots_fileprefix,
+                            plot_once=args.plot_once,
+                            plot_eff_reward=args.plot_eff_reward,
+                            plot_price_reward=args.plot_price_reward,
+                            plot_idle_penalty=args.plot_idle_penalty,
+                            steps_per_iteration=STEPS_PER_ITERATION)
     env.reset()
 
     # Check if there are any saved models in models_dir
@@ -84,24 +91,24 @@ def main():
     # If we're continuing from a saved model, adjust iters so that filenames continue sequentially
     if latest_model_file:
         try:
-            # Assumes the filename format is "{models_dir}/{TIMESTEPS * iters}.zip"
-            iters = int(os.path.basename(latest_model_file).split('.')[0]) // TIMESTEPS
+            # Assumes the filename format is "{models_dir}/{STEPS_PER_ITERATION * iters}.zip"
+            iters = int(os.path.basename(latest_model_file).split('.')[0]) // STEPS_PER_ITERATION
         except ValueError:
             # If the filename doesn't follow expected format, default to 0
             iters = 0
 
-    env.set_progress(iters, TIMESTEPS)
+    env.set_progress(iters)
 
     try:
         while True:
-            print(f"Training iteration {iters} ({TIMESTEPS * iters} steps)...")
+            print(f"Training iteration {iters} ({STEPS_PER_ITERATION * iters} steps)...")
             iters += 1
             if args.iter_limit > 0 and iters > args.iter_limit:
                 print(f"iterations limit ({args.iter_limit}) reached: {iters}.")
                 break
             try:
-                model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name=f"PPO")
-                model.save(f"{models_dir}/{TIMESTEPS * iters}.zip")
+                model.learn(total_timesteps=STEPS_PER_ITERATION, reset_num_timesteps=False, tb_log_name=f"PPO")
+                model.save(f"{models_dir}/{STEPS_PER_ITERATION * iters}.zip")
             except PlottingComplete:
                 print("Plotting complete, terminating training...")
                 break
