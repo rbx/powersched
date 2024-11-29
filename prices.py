@@ -3,14 +3,15 @@ import matplotlib.pyplot as plt
 
 class Prices:
     ELECTRICITY_PRICE_BASE = 20
-    PERCENTILE_MIN = 0.1
-    PERCENTILE_MAX = 99.9
+    PERCENTILE_MIN = 1
+    PERCENTILE_MAX = 99
     PREDICTION_WINDOW = 24
 
     def __init__(self, external_prices=None):
         self.original_prices = external_prices
         self.price_index = 0
         self.price_shift = 0
+        self.price_history = []
 
         if self.original_prices is not None:
             min_price = np.min(self.original_prices)
