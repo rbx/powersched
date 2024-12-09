@@ -439,7 +439,17 @@ class ComputeClusterEnv(gym.Env):
     #     return turned_off_reward
 
     def reward_price(self, current_price, average_future_price, num_processed_jobs):
-        price_reward = (average_future_price - current_price) * num_processed_jobs
+        history_avg, future_avg = self.prices.get_price_context()
+
+        if history_avg is not None:
+            # We have some history - use both past and future
+            context_avg = (history_avg + future_avg) / 2
+            price_diff = context_avg - current_price
+        else:
+            # No history yet - fall back to just using future prices
+            price_diff = average_future_price - current_price
+
+        price_reward = price_diff * num_processed_jobs
         # if current_price < average_future_price:
             # price_reward = REWARD_PROCESSED_JOB * num_processed_jobs
         return price_reward

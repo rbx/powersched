@@ -6,6 +6,7 @@ class Prices:
     PERCENTILE_MIN = 1
     PERCENTILE_MAX = 99
     PREDICTION_WINDOW = 24
+    HISTORY_WINDOW = 24
 
     def __init__(self, external_prices=None):
         self.original_prices = external_prices
@@ -52,7 +53,17 @@ class Prices:
             new_price = self.ELECTRICITY_PRICE_BASE * (1 + 0.2 * np.sin((self.price_index % 24) / 24 * 2 * np.pi))
             self.price_index += 1
 
+        # Update price history
+        self.price_history.append(new_price)
+        if len(self.price_history) > self.HISTORY_WINDOW:
+            self.price_history.pop(0)  # Remove oldest price
+
         return new_price
+
+    def get_price_context(self):
+        history_avg = np.mean(self.price_history) if self.price_history else None
+        future_avg = np.mean(self.predicted_prices)
+        return history_avg, future_avg
 
     def get_predicted_prices(self):
         # Update the prediction window by shifting and adding a new price
