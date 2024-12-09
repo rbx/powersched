@@ -66,7 +66,7 @@ class ComputeClusterEnv(gym.Env):
         if self.render_mode == 'human':
             print(*args)
 
-    def __init__(self, weights: Weights, session, render_mode, quick_plot, external_prices, plot_rewards, plots_fileprefix, plot_once, plot_eff_reward, plot_price_reward, plot_idle_penalty, steps_per_iteration):
+    def __init__(self, weights: Weights, session, render_mode, quick_plot, external_prices, plot_rewards, plots_dir, plot_once, plot_eff_reward, plot_price_reward, plot_idle_penalty, steps_per_iteration):
         super().__init__()
 
         self.weights = weights
@@ -76,7 +76,7 @@ class ComputeClusterEnv(gym.Env):
         self.plot_once = plot_once
         self.external_prices = external_prices
         self.plot_rewards = plot_rewards
-        self.plots_fileprefix = plots_fileprefix
+        self.plots_dir = plots_dir
         self.plot_eff_reward = plot_eff_reward
         self.plot_price_reward = plot_price_reward
         self.plot_idle_penalty = plot_idle_penalty

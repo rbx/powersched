@@ -52,10 +52,12 @@ def plot(env, num_hours, max_nodes, save=True, show=True, suffix=""):
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines + lines2, labels + labels2, loc='upper left')
 
+    prefix = f"e{env.weights.efficiency_weight}_p{env.weights.price_weight}_i{env.weights.idle_weight}"
+
     if save:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        plt.savefig(f"{env.plots_fileprefix}_{suffix}_{timestamp}.png")
-        print(f"Figure saved as: {env.plots_fileprefix}_{suffix}_{timestamp}.png\nExpecting next save after {env.next_plot_save + env.steps_per_iteration}")
+        plt.savefig(f"{env.plots_dir}{prefix}_{suffix}_{timestamp}.png")
+        print(f"Figure saved as: {env.plots_dir}{prefix}_{suffix}_{timestamp}.png\nExpecting next save after {env.next_plot_save + env.steps_per_iteration}")
     if show:
         plt.show()
 

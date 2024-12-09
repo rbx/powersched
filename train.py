@@ -43,12 +43,11 @@ def main():
         idle_weight=args.idle_weight
     )
 
-    models_dir = f"models/{args.session}_e{args.efficiency_weight}_p{args.price_weight}_i{args.idle_weight}/"
-    log_dir = f"logs/{args.session}_e{args.efficiency_weight}_p{args.price_weight}_i{args.idle_weight}/"
-    plots_dir = "plots/"
-    plots_fileprefix = f"{plots_dir}{args.session}_e{args.efficiency_weight}_p{args.price_weight}_i{args.idle_weight}"
+    models_dir = f"models/{args.session}/e{args.efficiency_weight}_p{args.price_weight}_i{args.idle_weight}/"
+    log_dir = f"logs/{args.session}/_e{args.efficiency_weight}_p{args.price_weight}_i{args.idle_weight}/"
+    plots_dir = f"plots/{args.session}/"
 
-    print(f"Will be saving plots with '{plots_fileprefix}' prefix.")
+    print(f"Will be saving plots in '{plots_dir}'.")
 
     if not os.path.exists(models_dir):
         os.makedirs(models_dir)
@@ -65,7 +64,7 @@ def main():
                             quick_plot=args.quick_plot,
                             external_prices=prices,
                             plot_rewards=args.plot_rewards,
-                            plots_fileprefix=plots_fileprefix,
+                            plots_dir=plots_dir,
                             plot_once=args.plot_once,
                             plot_eff_reward=args.plot_eff_reward,
                             plot_price_reward=args.plot_price_reward,
