@@ -18,10 +18,12 @@ def main():
     parser.add_argument('--plot-eff-reward', action='store_true', help='Include efficiency reward in the plot (dashes line).')
     parser.add_argument('--plot-price-reward', action='store_true', help='Include price reward in the plot (dashes line).')
     parser.add_argument('--plot-idle-penalty', action='store_true', help='Include idle penalty in the plot (dashes line).')
+    parser.add_argument('--plot-job-age-penalty', action='store_true', help='Include job age penalty in the plot (dashes line).')
     parser.add_argument('--ent-coef', type=float, default=0.0, help='Entropy coefficient for the loss calculation (default: 0.0) (Passed to PPO).')
     parser.add_argument("--efficiency-weight", type=float, default=0.7, help="Weight for efficiency reward")
     parser.add_argument("--price-weight", type=float, default=0.2, help="Weight for price reward")
     parser.add_argument("--idle-weight", type=float, default=0.1, help="Weight for idle penalty")
+    parser.add_argument("--job-age-weight", type=float, default=0.0, help="Weight for job age penalty")
     parser.add_argument("--iter-limit", type=int, default=0, help=f"Max number of training iterations (1 iteration = {STEPS_PER_ITERATION} steps)")
     parser.add_argument("--session", default="default", help="Session ID")
 
@@ -40,11 +42,14 @@ def main():
     weights = Weights(
         efficiency_weight=args.efficiency_weight,
         price_weight=args.price_weight,
-        idle_weight=args.idle_weight
+        idle_weight=args.idle_weight,
+        job_age_weight=args.job_age_weight
     )
 
-    models_dir = f"models/{args.session}/e{args.efficiency_weight}_p{args.price_weight}_i{args.idle_weight}/"
-    log_dir = f"logs/{args.session}/_e{args.efficiency_weight}_p{args.price_weight}_i{args.idle_weight}/"
+    weights_prefix = f"e{weights.efficiency_weight}_p{weights.price_weight}_i{weights.idle_weight}_d{weights.job_age_weight}"
+
+    models_dir = f"models/{args.session}/{weights_prefix}/"
+    log_dir = f"logs/{args.session}/{weights_prefix}/"
     plots_dir = f"plots/{args.session}/"
 
     print(f"Will be saving plots in '{plots_dir}'.")
@@ -69,6 +74,7 @@ def main():
                             plot_eff_reward=args.plot_eff_reward,
                             plot_price_reward=args.plot_price_reward,
                             plot_idle_penalty=args.plot_idle_penalty,
+                            plot_job_age_penalty=args.plot_job_age_penalty,
                             steps_per_iteration=STEPS_PER_ITERATION)
     env.reset()
 

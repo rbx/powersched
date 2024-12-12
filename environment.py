@@ -34,11 +34,11 @@ EPISODE_HOURS = WEEK_HOURS * 2
 # - cost of systems doing nothing (should not waste available resources)
 # - job queue advancement
 # Reward components
-REWARD_TURN_OFF_NODE = 0.1 # Reward for each node turned off
-REWARD_PROCESSED_JOB = 1   # Reward for processing jobs under favorable prices
-PENALTY_WAITING_JOB = -0.1  # Penalty for each hour a job is delayed
-PENALTY_NODE_CHANGE = -0.05 # Penalty for changing node state
+# REWARD_TURN_OFF_NODE = 0.1 # Reward for each node turned off
+# REWARD_PROCESSED_JOB = 1   # Reward for processing jobs under favorable prices
+# PENALTY_NODE_CHANGE = -0.05 # Penalty for changing node state
 PENALTY_IDLE_NODE = -0.1 # Penalty for idling nodes
+PENALTY_WAITING_JOB = -0.1  # Penalty for each hour a job is delayed
 
 # TODO:
 # - should the observation space be normalized too?
@@ -66,7 +66,7 @@ class ComputeClusterEnv(gym.Env):
         if self.render_mode == 'human':
             print(*args)
 
-    def __init__(self, weights: Weights, session, render_mode, quick_plot, external_prices, plot_rewards, plots_dir, plot_once, plot_eff_reward, plot_price_reward, plot_idle_penalty, steps_per_iteration):
+    def __init__(self, weights: Weights, session, render_mode, quick_plot, external_prices, plot_rewards, plots_dir, plot_once, plot_eff_reward, plot_price_reward, plot_idle_penalty, plot_job_age_penalty, steps_per_iteration):
         super().__init__()
 
         self.weights = weights
@@ -80,6 +80,7 @@ class ComputeClusterEnv(gym.Env):
         self.plot_eff_reward = plot_eff_reward
         self.plot_price_reward = plot_price_reward
         self.plot_idle_penalty = plot_idle_penalty
+        self.plot_job_age_penalty = plot_job_age_penalty
         self.steps_per_iteration = steps_per_iteration
         self.next_plot_save = self.steps_per_iteration
 
@@ -104,11 +105,16 @@ class ComputeClusterEnv(gym.Env):
         self.max_efficiency_reward = max(1.0, efficiency_with_work)
         # self.min_efficiency_reward = self.reward_efficiency(0, min_cost)
         # self.max_efficiency_reward = self.reward_efficiency(MAX_NODES, max_cost)
+
         self.min_price_reward = 0
         # self.min_price_reward = self.reward_price(self.prices.MAX_PRICE, self.prices.MIN_PRICE, MAX_NEW_JOBS_PER_HOUR)  # Worst case: highest current price, lowest future price, max jobs processed
         self.max_price_reward = self.reward_price(self.prices.MIN_PRICE, self.prices.MAX_PRICE, MAX_NEW_JOBS_PER_HOUR)  # Best case: lowest current price, highest future price, max jobs processed
+
         self.min_idle_penalty = self.penalty_idle(0)
         self.max_idle_penalty = self.penalty_idle(MAX_NODES)
+
+        self.min_job_age_penalty = -0.0
+        self.max_job_age_penalty = PENALTY_WAITING_JOB * MAX_JOB_AGE * MAX_QUEUE_SIZE
 
         # actions: - change number of available nodes:
         #   direction: 0: decrease, 1: maintain, 2: increase
@@ -169,9 +175,11 @@ class ComputeClusterEnv(gym.Env):
         self.used_nodes = []
         self.job_queue_sizes = []
         self.price_stats = []
+
         self.eff_rewards = []
         self.price_rewards = []
         self.idle_penalties = []
+        self.job_age_penalties = []
 
         self.total_cost = 0
         self.baseline_cost = 0
@@ -377,7 +385,7 @@ class ComputeClusterEnv(gym.Env):
         price_reward_norm = self.reward_price_normalized(current_price, average_future_price, num_processed_jobs)
 
         # 3. penalize delayed jobs, more if they are older. but only if there are turned off nodes
-        # delayed_jobs_penalty = self.penalty_delayed_jobs(num_off_nodes, job_queue_2d)
+        job_age_penalty_norm = self.penalty_job_age_normalized(num_off_nodes, job_queue_2d)
 
         # 4. penalty to avoid too frequent node state changes
         # node_change_penalty = self.penalty_node_changes(num_node_changes)
@@ -386,23 +394,25 @@ class ComputeClusterEnv(gym.Env):
         idle_penalty_norm = self.penalty_idle_normalized(num_idle_nodes)
 
         efficiency_reward_weighted = self.weights.efficiency_weight * efficiency_reward_norm
-        price_reward_weighted = self.weights.price_weight * price_reward_norm
-        idle_penalty_weighted = self.weights.idle_weight * idle_penalty_norm
         self.env_print(f"$$$EFF: {efficiency_reward_weighted:.4f} = {efficiency_reward_norm:.4f} x {self.weights.efficiency_weight}")
+        price_reward_weighted = self.weights.price_weight * price_reward_norm
         self.env_print(f"$$$PRICE: {price_reward_weighted:.4f} = {price_reward_norm:.4f} x {self.weights.price_weight}")
+        idle_penalty_weighted = self.weights.idle_weight * idle_penalty_norm
         self.env_print(f"$$$IDLE: {idle_penalty_weighted:.4f} = {idle_penalty_norm:.4f} x {self.weights.idle_weight}")
+        job_age_penalty_weighted = self.weights.job_age_weight * job_age_penalty_norm
+        self.env_print(f"$$$AGE: {job_age_penalty_weighted:.4f} = {job_age_penalty_norm:.4f} x {self.weights.job_age_weight}")
 
         self.eff_rewards.append(efficiency_reward_norm * 100)
         self.price_rewards.append(price_reward_norm * 100)
         self.idle_penalties.append(idle_penalty_norm * 100)
+        self.job_age_penalties.append(job_age_penalty_norm * 100)
 
         reward = (
             efficiency_reward_weighted
             # + 0.0 * turned_off_reward
             + price_reward_weighted
-            # + 0.0 * delayed_jobs_penalty
-            # + 0.0 * node_change_penalty
             + idle_penalty_weighted
+            + job_age_penalty_weighted
         )
 
         return reward, total_cost
@@ -465,16 +475,6 @@ class ComputeClusterEnv(gym.Env):
         # normalized_reward = np.clip(normalized_reward, 0, 1)
         return normalized_reward
 
-    # def penalty_delayed_jobs(self, num_off_nodes, job_queue_2d):
-    #     delayed_penalty = 0
-    #     if num_off_nodes > 0:
-    #         for job in job_queue_2d:
-    #             job_duration, job_age = job
-    #             if job_duration > 0:
-    #                 delayed_penalty += PENALTY_WAITING_JOB * job_age # Penalize for each hour a job is delayed
-    #     # self.env_print(f"$$ delayed_penalty: {delayed_penalty}")
-    #     return delayed_penalty
-
     # def penalty_node_changes(self, num_node_changes):
     #     node_change_penalty = PENALTY_NODE_CHANGE * num_node_changes
     #     # self.env_print(f"$$ node change penalty: {node_change_penalty}")
@@ -490,8 +490,26 @@ class ComputeClusterEnv(gym.Env):
         normalized_penalty = - normalize(current_penalty, self.min_idle_penalty, self.max_idle_penalty)
         self.env_print(f"$I normalized_penalty: {normalized_penalty:.4f} | min_penalty: {self.min_idle_penalty}, max_penalty: {self.max_idle_penalty}")
         # Clip the value to ensure it's between 0 and 1
-        # normalized_penalty = np.clip(normalized_penalty, -1, 0)
-        # self.env_print(f"$$ CLIPPED normalized_penalty: {normalized_penalty}")
+        normalized_penalty = np.clip(normalized_penalty, -1, 0)
+        self.env_print(f"$I CLIPPED normalized_penalty: {normalized_penalty}")
+        return normalized_penalty
+
+    def penalty_job_age(self, num_off_nodes, job_queue_2d):
+        job_age_penalty = 0
+        if num_off_nodes > 0:
+            for job in job_queue_2d:
+                job_duration, job_age = job
+                if job_duration > 0:
+                    job_age_penalty += PENALTY_WAITING_JOB * job_age
+        return job_age_penalty
+
+    def penalty_job_age_normalized(self, num_off_nodes, job_queue_2d):
+        current_penalty = self.penalty_job_age(num_off_nodes, job_queue_2d)
+        self.env_print(f"$$D current_penalty: {current_penalty:.4f}")
+        normalized_penalty = - normalize(current_penalty, self.min_job_age_penalty, self.max_job_age_penalty)
+        self.env_print(f"$D normalized_penalty: {normalized_penalty:.4f} | min_penalty: {self.min_job_age_penalty}, max_penalty: {self.max_job_age_penalty}")
+        normalized_penalty = np.clip(normalized_penalty, -1, 0)
+        self.env_print(f"$D CLIPPED normalized_penalty: {normalized_penalty}")
         return normalized_penalty
 
 def normalize(current, minimum, maximum):

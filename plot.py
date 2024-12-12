@@ -29,9 +29,11 @@ def plot(env, num_hours, max_nodes, save=True, show=True, suffix=""):
         ax2.plot(hours, env.price_rewards, color='blue', linestyle='--', label='Price Rewards')
     if env.plot_idle_penalty:
         ax2.plot(hours, env.idle_penalties, color='green', linestyle='--', label='Idle Penalties')
+    if env.plot_job_age_penalty:
+        ax2.plot(hours, env.job_age_penalties, color='yellow', linestyle='--', label='Job Age Penalties Penalties')
 
     ax2.tick_params(axis='y')
-    if env.plot_idle_penalty:
+    if env.plot_idle_penalty or env.plot_job_age_penalty:
         ax2.set_ylim(-100, max_nodes)
     else:
         ax2.set_ylim(0, max_nodes)
@@ -52,7 +54,7 @@ def plot(env, num_hours, max_nodes, save=True, show=True, suffix=""):
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines + lines2, labels + labels2, loc='upper left')
 
-    prefix = f"e{env.weights.efficiency_weight}_p{env.weights.price_weight}_i{env.weights.idle_weight}"
+    prefix = f"e{env.weights.efficiency_weight}_p{env.weights.price_weight}_i{env.weights.idle_weight}_d{env.weights.job_age_weight}"
 
     if save:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
