@@ -259,7 +259,16 @@ class ComputeClusterEnv(gym.Env):
             self.current_week += (EPISODE_HOURS // WEEK_HOURS)
             self.current_episode += 1
 
-            # TODO: sparse rewards?
+            # self.env_print(f"\nepisode: {self.current_episode}, week: {self.current_week}, step: {self.current_step}, hour: {self.current_hour}\nepisode reward: {self.episode_reward:.4f}\n")
+
+            # # sparse reward
+            # if self.total_cost < self.baseline_cost_off:
+            #     cost_improvement = self.baseline_cost_off - self.total_cost
+            #     # Scale the reward to be roughly 10% of total episode reward when cost savings are significant
+            #     baseline_reward = 0.1 * (cost_improvement / self.baseline_cost_off) * EPISODE_HOURS
+            #     self.env_print(f"$$$BASELINE: {baseline_reward:.4f} (cost savings: €{cost_improvement:.2f})")
+            #     reward += baseline_reward
+            #     self.env_print(f"TOTAL (dense + sparse) reward: {reward:.4f}")
 
             if self.render_mode == 'human':
                 print(f"total_cost: {self.total_cost}")

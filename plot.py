@@ -58,8 +58,8 @@ def plot(env, num_hours, max_nodes, save=True, show=True, suffix=""):
 
     if save:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        plt.savefig(f"{env.plots_dir}{prefix}_{suffix}_{timestamp}.png")
-        print(f"Figure saved as: {env.plots_dir}{prefix}_{suffix}_{timestamp}.png\nExpecting next save after {env.next_plot_save + env.steps_per_iteration}")
+        plt.savefig(f"{env.plots_dir}{prefix}_{suffix:09d}_{timestamp}.png")
+        print(f"Figure saved as: {env.plots_dir}{prefix}_{suffix:09d}_{timestamp}.png\nExpecting next save after {env.next_plot_save + env.steps_per_iteration}")
     if show:
         plt.show()
 
