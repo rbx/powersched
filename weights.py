@@ -8,7 +8,7 @@ class Weights:
         self.job_age_weight = job_age_weight
 
     def __str__(self):
-        return f"Weights: efficiency={self.efficiency_weight}, price={self.price_weight}, idle={self.idle_weight}, job_age={self.job_age_weight}. sum={self.sum():.2f})"
+        return f"Weights: efficiency={self.efficiency_weight}, price={self.price_weight}, idle={self.idle_weight}, job_age={self.job_age_weight}. sum={self.sum():.2f}"
 
     def __repr__(self):
         return self.__str__()
