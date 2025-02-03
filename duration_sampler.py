@@ -67,7 +67,7 @@ class DurationSampler:
             raise RuntimeError("Sampler not initialized. Call init() first.")
 
         samples = np.random.choice(self.sample_values, size=n, p=self.probabilities)
-        return float(samples[0]) if n == 1 else samples
+        return samples.astype(int)
 
     def get_stats(self):
         """Return summary statistics of the duration data."""

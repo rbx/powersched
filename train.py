@@ -14,6 +14,7 @@ def main():
     parser.add_argument('--quick-plot', action='store_true', help='In "human" render mode, skip quickly to the plot (default: False).')
     parser.add_argument('--plot-once', action='store_true', help='In "human" render mode, exit after the first plot.')
     parser.add_argument('--prices', type=str, nargs='?', const="", default="", help='Path to the CSV file containing electricity prices (Date,Price)')
+    parser.add_argument('--job-durations', type=str, nargs='?', const="", default="", help='Path to a file containing job duration samples (for use with duration_sampler)')
     parser.add_argument('--plot-rewards', action='store_true', help='Per step, plot rewards for all possible num_idle_nodes & num_used_nodes (default: False).')
     parser.add_argument('--plot-eff-reward', action='store_true', help='Include efficiency reward in the plot (dashes line).')
     parser.add_argument('--plot-price-reward', action='store_true', help='Include price reward in the plot (dashes line).')
@@ -28,12 +29,13 @@ def main():
     parser.add_argument("--session", default="default", help="Session ID")
 
     args = parser.parse_args()
-    csv_file_path = args.prices
+    prices_file_path = args.prices
+    job_durations_file_path = args.job_durations
 
-    if csv_file_path:
-        df = pd.read_csv(csv_file_path, parse_dates=['Date'])
+    if prices_file_path:
+        df = pd.read_csv(prices_file_path, parse_dates=['Date'])
         prices = df['Price'].values.tolist()
-        print(f"Loaded {len(prices)} prices from CSV: {csv_file_path}")
+        print(f"Loaded {len(prices)} prices from CSV: {prices_file_path}")
         # print("First few prices:", prices[:30])
     else:
         prices = None
@@ -68,6 +70,7 @@ def main():
                             render_mode=args.render,
                             quick_plot=args.quick_plot,
                             external_prices=prices,
+                            external_durations=job_durations_file_path,
                             plot_rewards=args.plot_rewards,
                             plots_dir=plots_dir,
                             plot_once=args.plot_once,

@@ -8,6 +8,7 @@ from colorama import init, Fore
 from prices import Prices
 from weights import Weights
 from plot import plot, plot_reward
+from duration_sampler import sampler as duration_sampler
 
 init()  # Initialize colorama
 
@@ -18,7 +19,7 @@ MAX_QUEUE_SIZE = 100  # Maximum number of jobs in the queue
 MAX_CHANGE = 100
 MAX_JOB_DURATION = 1 # maximum job runtime
 MAX_JOB_AGE = WEEK_HOURS # job waits maximum a week
-MAX_NEW_JOBS_PER_HOUR = 5
+MAX_NEW_JOBS_PER_HOUR = 20
 
 COST_IDLE = 150 # Watts
 COST_USED = 450 # Watts
@@ -66,25 +67,44 @@ class ComputeClusterEnv(gym.Env):
         if self.render_mode == 'human':
             print(*args)
 
-    def __init__(self, weights: Weights, session, render_mode, quick_plot, external_prices, plot_rewards, plots_dir, plot_once, plot_eff_reward, plot_price_reward, plot_idle_penalty, plot_job_age_penalty, steps_per_iteration):
+    def __init__(self,
+                 weights: Weights,
+                 session,
+                 render_mode,
+                 quick_plot,
+                 external_prices,
+                 external_durations,
+                 plot_rewards,
+                 plots_dir,
+                 plot_once,
+                 plot_eff_reward,
+                 plot_price_reward,
+                 plot_idle_penalty,
+                 plot_job_age_penalty,
+                 steps_per_iteration):
         super().__init__()
 
         self.weights = weights
         self.session = session
         self.render_mode = render_mode
         self.quick_plot = quick_plot
-        self.plot_once = plot_once
         self.external_prices = external_prices
+        self.external_durations = external_durations
         self.plot_rewards = plot_rewards
         self.plots_dir = plots_dir
+        self.plot_once = plot_once
         self.plot_eff_reward = plot_eff_reward
         self.plot_price_reward = plot_price_reward
         self.plot_idle_penalty = plot_idle_penalty
         self.plot_job_age_penalty = plot_job_age_penalty
         self.steps_per_iteration = steps_per_iteration
+
         self.next_plot_save = self.steps_per_iteration
 
         self.prices = Prices(self.external_prices)
+
+        if self.external_durations:
+            duration_sampler.init(self.external_durations)
 
         self.current_step = 0
         self.current_episode = 0
@@ -202,7 +222,11 @@ class ComputeClusterEnv(gym.Env):
 
         # Update job queue with new jobs. If queue is full, do nothing
         new_jobs_count = np.random.randint(0, MAX_NEW_JOBS_PER_HOUR + 1)
-        new_jobs_durations = np.random.randint(1, MAX_JOB_DURATION + 1, size=new_jobs_count)
+        new_jobs_durations = []
+        if self.external_durations:
+            new_jobs_durations = duration_sampler.sample(new_jobs_count)
+        else:
+            new_jobs_durations = np.random.randint(1, MAX_JOB_DURATION + 1, size=new_jobs_count)
         self.add_new_jobs(job_queue_2d, new_jobs_count, new_jobs_durations)
 
         self.env_print("nodes: ", np.array2string(self.state['nodes'], separator=" ", max_line_width=np.inf))
