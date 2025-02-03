@@ -16,10 +16,14 @@ def main():
     parser.add_argument('--prices', type=str, nargs='?', const="", default="", help='Path to the CSV file containing electricity prices (Date,Price)')
     parser.add_argument('--job-durations', type=str, nargs='?', const="", default="", help='Path to a file containing job duration samples (for use with duration_sampler)')
     parser.add_argument('--plot-rewards', action='store_true', help='Per step, plot rewards for all possible num_idle_nodes & num_used_nodes (default: False).')
-    parser.add_argument('--plot-eff-reward', action='store_true', help='Include efficiency reward in the plot (dashes line).')
-    parser.add_argument('--plot-price-reward', action='store_true', help='Include price reward in the plot (dashes line).')
-    parser.add_argument('--plot-idle-penalty', action='store_true', help='Include idle penalty in the plot (dashes line).')
-    parser.add_argument('--plot-job-age-penalty', action='store_true', help='Include job age penalty in the plot (dashes line).')
+    parser.add_argument('--plot-eff-reward', action='store_true', help='Include efficiency reward in the plot (dashed line).')
+    parser.add_argument('--plot-price-reward', action='store_true', help='Include price reward in the plot (dashed line).')
+    parser.add_argument('--plot-idle-penalty', action='store_true', help='Include idle penalty in the plot (dashed line).')
+    parser.add_argument('--plot-job-age-penalty', action='store_true', help='Include job age penalty in the plot (dashed line).')
+    parser.add_argument('--skip-plot-price', action='store_true', help='Skip electricity price in the plot (blue line).')
+    parser.add_argument('--skip-plot-online-nodes', action='store_true', help='Skip online nodes in the plot (blue line).')
+    parser.add_argument('--skip-plot-used-nodes', action='store_true', help='Skip used nodes in the plot (blue line).')
+    parser.add_argument('--skip-plot-job-queue', action='store_true', help='Skip job queue in the plot (blue line).')
     parser.add_argument('--ent-coef', type=float, default=0.0, help='Entropy coefficient for the loss calculation (default: 0.0) (Passed to PPO).')
     parser.add_argument("--efficiency-weight", type=float, default=0.7, help="Weight for efficiency reward")
     parser.add_argument("--price-weight", type=float, default=0.2, help="Weight for price reward")
@@ -78,6 +82,10 @@ def main():
                             plot_price_reward=args.plot_price_reward,
                             plot_idle_penalty=args.plot_idle_penalty,
                             plot_job_age_penalty=args.plot_job_age_penalty,
+                            skip_plot_price=args.skip_plot_price,
+                            skip_plot_online_nodes=args.skip_plot_online_nodes,
+                            skip_plot_used_nodes=args.skip_plot_used_nodes,
+                            skip_plot_job_queue=args.skip_plot_job_queue,
                             steps_per_iteration=STEPS_PER_ITERATION)
     env.reset()
 

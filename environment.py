@@ -81,6 +81,10 @@ class ComputeClusterEnv(gym.Env):
                  plot_price_reward,
                  plot_idle_penalty,
                  plot_job_age_penalty,
+                 skip_plot_price,
+                 skip_plot_online_nodes,
+                 skip_plot_used_nodes,
+                 skip_plot_job_queue,
                  steps_per_iteration):
         super().__init__()
 
@@ -97,6 +101,10 @@ class ComputeClusterEnv(gym.Env):
         self.plot_price_reward = plot_price_reward
         self.plot_idle_penalty = plot_idle_penalty
         self.plot_job_age_penalty = plot_job_age_penalty
+        self.skip_plot_price = skip_plot_price
+        self.skip_plot_online_nodes = skip_plot_online_nodes
+        self.skip_plot_used_nodes = skip_plot_used_nodes
+        self.skip_plot_job_queue = skip_plot_job_queue
         self.steps_per_iteration = steps_per_iteration
 
         self.next_plot_save = self.steps_per_iteration
@@ -295,9 +303,9 @@ class ComputeClusterEnv(gym.Env):
             #     self.env_print(f"TOTAL (dense + sparse) reward: {reward:.4f}")
 
             if self.render_mode == 'human':
-                print(f"total_cost: {self.total_cost}")
-                print(f"baseline_cost: {self.baseline_cost:.4f}")
-                print(f"baseline_cost_off: {self.baseline_cost_off:.4f}")
+                print(f"EPISODEEND: total_cost: {self.total_cost}")
+                print(f"EPISODEEND: baseline_cost: {self.baseline_cost:.4f}")
+                print(f"EPISODEEND: baseline_cost_off: {self.baseline_cost_off:.4f}")
                 plot(self, EPISODE_HOURS, MAX_NODES, False, True, self.current_step)
                 if self.plot_once:
                     raise PlottingComplete
