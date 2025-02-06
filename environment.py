@@ -118,6 +118,10 @@ class ComputeClusterEnv(gym.Env):
         self.current_episode = 0
         self.current_week = 0
 
+        self.total_cost = 0
+        self.baseline_cost = 0
+        self.baseline_cost_off = 0
+
         self.reset_state()
 
         print(f"weights: {self.weights}")

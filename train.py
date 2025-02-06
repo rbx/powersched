@@ -1,6 +1,7 @@
 from stable_baselines3 import PPO
 import os
 from environment import ComputeClusterEnv, Weights, PlottingComplete
+from callbacks import ComputeClusterCallback
 import re
 import glob
 import argparse
@@ -123,7 +124,7 @@ def main():
                 print(f"iterations limit ({args.iter_limit}) reached: {iters}.")
                 break
             try:
-                model.learn(total_timesteps=STEPS_PER_ITERATION, reset_num_timesteps=False, tb_log_name=f"PPO")
+                model.learn(total_timesteps=STEPS_PER_ITERATION, reset_num_timesteps=False, tb_log_name=f"PPO", callback=ComputeClusterCallback())
                 model.save(f"{models_dir}/{STEPS_PER_ITERATION * iters}.zip")
             except PlottingComplete:
                 print("Plotting complete, terminating training...")
