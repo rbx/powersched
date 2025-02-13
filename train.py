@@ -118,7 +118,7 @@ def main():
 
     try:
         while True:
-            print(f"Training iteration {iters} ({STEPS_PER_ITERATION * iters} steps)...")
+            print(f"Training iteration {iters + 1} ({STEPS_PER_ITERATION * (iters + 1)} steps)...")
             iters += 1
             if args.iter_limit > 0 and iters > args.iter_limit:
                 print(f"iterations limit ({args.iter_limit}) reached: {iters}.")

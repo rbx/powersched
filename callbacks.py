@@ -24,7 +24,7 @@ class ComputeClusterCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         env = self.training_env.envs[0].unwrapped
-        if env.current_step % EPISODE_HOURS == EPISODE_HOURS-1:
+        if env.current_hour == EPISODE_HOURS-1:
             self.logger.record("metrics/cost", env.total_cost)
             self.logger.record("metrics/savings", env.baseline_cost - env.total_cost)
             self.logger.record("metrics/savings_off", env.baseline_cost_off - env.total_cost)

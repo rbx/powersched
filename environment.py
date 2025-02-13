@@ -19,7 +19,7 @@ MAX_QUEUE_SIZE = 100  # Maximum number of jobs in the queue
 MAX_CHANGE = 100
 MAX_JOB_DURATION = 1 # maximum job runtime
 MAX_JOB_AGE = WEEK_HOURS # job waits maximum a week
-MAX_NEW_JOBS_PER_HOUR = 20
+MAX_NEW_JOBS_PER_HOUR = 30
 
 COST_IDLE = 150 # Watts
 COST_USED = 450 # Watts
@@ -59,7 +59,7 @@ class ComputeClusterEnv(gym.Env):
     def set_progress(self, iterations):
         self.current_step = iterations * self.steps_per_iteration
         self.current_episode = self.current_step // EPISODE_HOURS
-        self.current_week = self.current_step // WEEK_HOURS
+        print(f"Resuming training... step: {self.current_step}, episode: {self.current_episode}, hour: {self.current_hour}")
         self.next_plot_save = iterations * self.steps_per_iteration + EPISODE_HOURS
 
     def env_print(self, *args):
@@ -116,7 +116,7 @@ class ComputeClusterEnv(gym.Env):
 
         self.current_step = 0
         self.current_episode = 0
-        self.current_week = 0
+        self.current_hour = 0
 
         self.total_cost = 0
         self.baseline_cost = 0
@@ -218,9 +218,11 @@ class ComputeClusterEnv(gym.Env):
         self.baseline_cost_off = 0
 
     def step(self, action):
-        self.env_print(Fore.GREEN + f"\nepisode: {self.current_episode}, week: {self.current_week}, step: {self.current_step}, hour: {self.current_hour}")
-        self.env_print(Fore.RESET)
         self.current_step += 1
+        self.current_hour += 1
+        if self.current_hour == 1:
+            self.current_episode += 1
+        self.env_print(Fore.GREEN + f"\n[[[ Starting episode: {self.current_episode}, step: {self.current_step}, hour: {self.current_hour}" + Fore.RESET)
 
         self.state['predicted_prices'] = self.prices.get_predicted_prices()
         current_price = self.state['predicted_prices'][0]
@@ -290,13 +292,7 @@ class ComputeClusterEnv(gym.Env):
 
         truncated = False
         terminated = False
-        self.current_hour += 1
-        if self.current_hour >= EPISODE_HOURS:
-            self.current_week += (EPISODE_HOURS // WEEK_HOURS)
-            self.current_episode += 1
-
-            # self.env_print(f"\nepisode: {self.current_episode}, week: {self.current_week}, step: {self.current_step}, hour: {self.current_hour}\nepisode reward: {self.episode_reward:.4f}\n")
-
+        if self.current_hour == EPISODE_HOURS:
             # # sparse reward
             # if self.total_cost < self.baseline_cost_off:
             #     cost_improvement = self.baseline_cost_off - self.total_cost
@@ -307,9 +303,6 @@ class ComputeClusterEnv(gym.Env):
             #     self.env_print(f"TOTAL (dense + sparse) reward: {reward:.4f}")
 
             if self.render_mode == 'human':
-                print(f"EPISODEEND: total_cost: {self.total_cost}")
-                print(f"EPISODEEND: baseline_cost: {self.baseline_cost:.4f}")
-                print(f"EPISODEEND: baseline_cost_off: {self.baseline_cost_off:.4f}")
                 plot(self, EPISODE_HOURS, MAX_NODES, False, True, self.current_step)
                 if self.plot_once:
                     raise PlottingComplete
@@ -328,6 +321,8 @@ class ComputeClusterEnv(gym.Env):
             # go slow to be able to read stuff in human mode
             if not self.quick_plot:
                 time.sleep(1)
+
+        self.env_print(Fore.GREEN + f"]]]" + Fore.RESET)
 
         return self.state, reward, terminated, truncated, {}
 
