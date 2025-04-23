@@ -55,11 +55,9 @@ def main():
 
     weights_prefix = f"e{weights.efficiency_weight}_p{weights.price_weight}_i{weights.idle_weight}_d{weights.job_age_weight}"
 
-    models_dir = f"models/{args.session}/{weights_prefix}/"
-    log_dir = f"logs/{args.session}/{weights_prefix}/"
-    plots_dir = f"plots/{args.session}/"
-
-    print(f"Will be saving plots in '{plots_dir}'.")
+    models_dir = f"sessions/{args.session}/models/{weights_prefix}/"
+    log_dir = f"sessions/{args.session}/logs/{weights_prefix}/"
+    plots_dir = f"sessions/{args.session}/plots/"
 
     if not os.path.exists(models_dir):
         os.makedirs(models_dir)

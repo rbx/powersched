@@ -1,6 +1,3 @@
 __pycache__/
-models
-saved_models
-logs
-plots
+sessions
 venv/
