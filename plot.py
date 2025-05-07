@@ -48,10 +48,10 @@ def plot(env, num_hours, max_nodes, save=True, show=True, suffix=""):
               f"Cost: €{env.total_cost:.2f}, "
               f"Base_Cost: €{env.baseline_cost:.2f} "
               f"({'+' if env.baseline_cost - env.total_cost >= 0 else '-'}"
-              f"{abs(env.baseline_cost - env.total_cost):.2f}), "
+              f"{abs(env.baseline_cost - env.total_cost):.2f}) {((env.baseline_cost - env.total_cost) / env.baseline_cost) * 100:.2f}%, "
               f"Base_Cost_Off: €{env.baseline_cost_off:.2f} "
               f"({'+' if env.baseline_cost_off - env.total_cost >= 0 else '-'}"
-              f"{abs(env.baseline_cost_off - env.total_cost):.2f})")
+              f"{abs(env.baseline_cost_off - env.total_cost):.2f}) {((env.baseline_cost_off - env.total_cost) / env.baseline_cost_off) * 100:.2f}%")
 
     # Combine legends from both axes
     lines, labels = ax1.get_legend_handles_labels()

@@ -19,7 +19,7 @@ MAX_QUEUE_SIZE = 100  # Maximum number of jobs in the queue
 MAX_CHANGE = 100
 MAX_JOB_DURATION = 24 # maximum job runtime
 MAX_JOB_AGE = WEEK_HOURS # job waits maximum a week
-MAX_NEW_JOBS_PER_HOUR = 1
+MAX_NEW_JOBS_PER_HOUR = 10
 
 COST_IDLE = 150 # Watts
 COST_USED = 450 # Watts
