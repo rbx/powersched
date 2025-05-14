@@ -118,4 +118,4 @@ class DurationSampler:
         plt.show()
 
 # Create a singleton instance
-sampler = DurationSampler()
+durations_sampler = DurationSampler()

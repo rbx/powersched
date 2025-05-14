@@ -1,4 +1,4 @@
-from duration_sampler import sampler
+from sampler_duration import durations_sampler
 import argparse
 
 def main():
@@ -9,18 +9,18 @@ def main():
     parser.add_argument("--print-stats", action='store_true', help='Print summary statistics.')
     args = parser.parse_args()
 
-    sampler.init(args.file_path)
+    durations_sampler.init(args.file_path)
 
     if args.print_stats:
-        stats = sampler.get_stats()
+        stats = durations_sampler.get_stats()
         print("\nSummary statistics:")
         print(stats)
 
     if args.plot:
-        sampler.plot()
+        durations_sampler.plot()
 
     if args.test_samples:
-        samples = sampler.sample(n=args.test_samples)
+        samples = durations_sampler.sample(n=args.test_samples)
         print("\nTest samples:")
         print(samples)
 
