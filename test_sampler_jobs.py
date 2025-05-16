@@ -8,12 +8,22 @@ if __name__ == "__main__":
     parser.add_argument('--bin-minutes', type=int, default=60, help='Bin duration in minutes (default: 60)')
     args = parser.parse_args()
 
-    result = jobs_sampler.get_jobs(args.file_path, args.bin_minutes)
-    if result is None:
+    jobs_sampler.parse_jobs(args.file_path, args.bin_minutes)
+    all_jobs = jobs_sampler.get_all_jobs()
+
+    for period, jobs in all_jobs.items():
+        print(f"period: {period}, jobs: {len(jobs)}")
+        # for i, job in enumerate(jobs):
+            # print(f"  Job {i+1}: Nodes={job['nnodes']}, Cores per node={job['cores_per_node']}, Duration={job['duration_minutes']} minutes")
+
+    samples = jobs_sampler.sample(3)
+    if samples is None:
         print("No jobs data found.")
         sys.exit(1)
 
-    for hour, jobs in result.items():
-        print(f"hour: {hour}, jobs: {len(jobs)}")
-        # for i, job in enumerate(jobs):
-            # print(f"  Job {i+1}: Nodes={job['nnodes']}, Cores per node={job['cores_per_node']}, Duration={job['duration_hours']} hours")
+    # samples is a dictionary with keys as start time string and values are array of jobs
+    print(f"Sampled {len(samples)} jobs:")
+    for i, key in enumerate(samples):
+        print(f"  {i+1}: {key} - {len(samples[key])} jobs")
+
+

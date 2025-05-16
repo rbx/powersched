@@ -1,10 +1,16 @@
 import re
 import datetime
 import math
+import random
 from collections import defaultdict
 
 class DurationSampler:
-    def get_jobs(self, filepath, bin_minutes=60):
+    def __init__(self):
+        self.jobs = {}
+        self.keys = []
+        self.current_position = 0
+
+    def parse_jobs(self, filepath, bin_minutes=60):
         if filepath:
             with open(filepath, 'r') as f:
                 data_text = f.read()
@@ -46,6 +52,48 @@ class DurationSampler:
 
             jobs[key].append({"nnodes": nnodes, "cores_per_node": cores_per_node, "duration_minutes": duration_minutes})
 
-        return dict(sorted(jobs.items()))
+        # Store data internally
+        self.jobs = dict(sorted(jobs.items()))
+        self.keys = list(self.jobs.keys())
+        self.current_position = 0
+
+        return self
+
+    def get_all_jobs(self):
+        return self.jobs
+
+    def sample(self, n=1, wrap=True):
+        if not self.keys:
+            return {}
+
+        result = {}
+        bins_sampled = 0
+
+        while bins_sampled < n:
+            if self.current_position >= len(self.keys):
+                if wrap:
+                    self.current_position = 0
+                else:
+                    break
+
+            current_key = self.keys[self.current_position]
+            result[current_key] = self.jobs[current_key]
+            bins_sampled += 1
+            self.current_position += 1
+
+        return result
+
+    def reset_position(self):
+        """Reset the current sampling position to the beginning."""
+        self.current_position = 0
+        return self
+
+    def sample_random(self, n=1):
+        """Sample n random time bins from the parsed data."""
+        if not self.keys:
+            return {}
+
+        selected_keys = random.sample(self.keys, min(n, len(self.keys)))
+        return {key: self.jobs[key] for key in selected_keys}
 
 jobs_sampler = DurationSampler()
