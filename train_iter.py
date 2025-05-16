@@ -65,7 +65,7 @@ def generate_weight_combinations(step=0.1, fixed_weights=None):
 
     return combinations
 
-def run(efficiency_weight, price_weight, idle_weight, job_age_weight, iter_limit_per_step, session, prices, job_durations):
+def run(efficiency_weight, price_weight, idle_weight, job_age_weight, iter_limit_per_step, session, prices, job_durations, jobs):
     python_executable = sys.executable
     command = [
         python_executable, "train.py",
@@ -76,6 +76,7 @@ def run(efficiency_weight, price_weight, idle_weight, job_age_weight, iter_limit
         "--iter-limit", f"{iter_limit_per_step}",
         "--prices", f"{prices}",
         "--job-durations", f"{job_durations}",
+        "--jobs", f"{jobs}",
         "--session", f"{session}"
     ]
     print(f"executing: {command}")
@@ -108,6 +109,7 @@ def main():
     parser.add_argument("--step", type=float, default=0.1, help="Step size for weight combinations")
     parser.add_argument('--prices', type=str, nargs='?', const="", default="", help='Path to the CSV file containing electricity prices (Date,Price)')
     parser.add_argument('--job-durations', type=str, nargs='?', const="", default="", help='Path to a file containing job duration samples (for use with duration_sampler)')
+    parser.add_argument('--jobs', type=str, nargs='?', const="", default="", help='Path to a file containing jobs samples (for use with jobs_sampler)')
     parser.add_argument("--fix-weights", type=str, help="Comma-separated list of weights to fix (efficiency,price,idle,job-age)")
     parser.add_argument("--fix-values", type=str, help="Comma-separated list of values for fixed weights")
     parser.add_argument("--iter-limit-per-step", type=int, help="Max number of training iterations per step (1 iteration = {TIMESTEPS} steps)")
@@ -134,7 +136,7 @@ def main():
     for combo in combinations:
         efficiency_weight, price_weight, idle_weight, job_age_weight = combo
         print(f"Running with weights: efficiency={efficiency_weight}, price={price_weight}, idle={idle_weight}, job_age={job_age_weight}")
-        run(efficiency_weight, price_weight, idle_weight, job_age_weight, iter_limit_per_step=args.iter_limit_per_step, session=args.session, prices=args.prices, job_durations=args.job_durations)
+        run(efficiency_weight, price_weight, idle_weight, job_age_weight, args.iter_limit_per_step, args.session, args.prices, args.job_durations, args.jobs)
 
 if __name__ == "__main__":
     main()

@@ -8,7 +8,8 @@ from colorama import init, Fore
 from prices import Prices
 from weights import Weights
 from plot import plot, plot_reward
-from duration_sampler import sampler as duration_sampler
+from sampler_duration import durations_sampler
+from sampler_jobs import jobs_sampler
 
 init()  # Initialize colorama
 
@@ -80,6 +81,7 @@ class ComputeClusterEnv(gym.Env):
                  quick_plot,
                  external_prices,
                  external_durations,
+                 external_jobs,
                  plot_rewards,
                  plots_dir,
                  plot_once,
@@ -100,6 +102,7 @@ class ComputeClusterEnv(gym.Env):
         self.quick_plot = quick_plot
         self.external_prices = external_prices
         self.external_durations = external_durations
+        self.external_jobs = external_jobs
         self.plot_rewards = plot_rewards
         self.plots_dir = plots_dir
         self.plot_once = plot_once
@@ -118,7 +121,13 @@ class ComputeClusterEnv(gym.Env):
         self.prices = Prices(self.external_prices)
 
         if self.external_durations:
-            duration_sampler.init(self.external_durations)
+            durations_sampler.init(self.external_durations)
+
+        self.jobs = None
+        if self.external_jobs:
+            print(f"Loading jobs from {self.external_jobs}")
+            self.jobs = jobs_sampler.get_jobs_per_hour(self.external_jobs)
+            print(f"Loaded jobs for {len(self.jobs)} hours")
 
         self.current_step = 0
         self.current_episode = 0
@@ -255,9 +264,15 @@ class ComputeClusterEnv(gym.Env):
         new_jobs_nodes = []
         new_jobs_cores = []
         if self.external_durations:
-            new_jobs_durations = duration_sampler.sample(new_jobs_count)
+            new_jobs_durations = durations_sampler.sample(new_jobs_count)
         else:
             new_jobs_durations = np.random.randint(1, MAX_JOB_DURATION + 1, size=new_jobs_count)
+
+        # if self.jobs:
+        #     for hour, jobs in self.jobs.items():
+        #         # for i, job in enumerate(jobs):
+        #             # print(f"  Job {i+1}: Nodes={job['nnodes']}, Cores per node={job['cores_per_node']}, Duration={job['duration_hours']} hours")
+        #         print()
 
         # Generate random node and core requirements
         for _ in range(new_jobs_count):
