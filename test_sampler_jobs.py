@@ -16,7 +16,7 @@ if __name__ == "__main__":
         # for i, job in enumerate(jobs):
             # print(f"  Job {i+1}: Nodes={job['nnodes']}, Cores per node={job['cores_per_node']}, Duration={job['duration_minutes']} minutes")
 
-    samples = jobs_sampler.sample(3)
+    samples = jobs_sampler.sample(14)
     if samples is None:
         print("No jobs data found.")
         sys.exit(1)
