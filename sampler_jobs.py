@@ -7,8 +7,13 @@ from collections import defaultdict
 class DurationSampler:
     def __init__(self):
         self.jobs = {}
+        self.aggregated_jobs = {}
+        self.hourly_jobs = {}
         self.keys = []
         self.current_position = 0
+
+        self.max_new_jobs_per_hour = 0
+        self.max_job_duration = 0
 
     def parse_jobs(self, filepath, bin_minutes=60):
         if filepath:
@@ -111,6 +116,9 @@ class DurationSampler:
 
     def get_all_jobs(self):
         return self.jobs
+
+    def get_all_aggregated_jobs(self):
+        return self.aggregated_jobs
 
     def sample(self, n=1, wrap=True):
         """
@@ -345,6 +353,94 @@ class DurationSampler:
                 }
                 hourly_jobs.append(hourly_job)
 
+            if hourly_job['duration_hours'] > self.max_job_duration:
+                self.max_job_duration = hourly_job['duration_hours']
+
+        if len(hourly_jobs) > self.max_new_jobs_per_hour:
+            self.max_new_jobs_per_hour = len(hourly_jobs)
+
         return hourly_jobs
+
+    def precalculate_hourly_jobs(self, cores_per_node, max_nodes_per_job):
+        """
+        Precalculate hourly job conversions for all time periods.
+
+        Parameters:
+        - cores_per_node: Number of cores per node in the simulation
+        - max_nodes_per_job: Maximum nodes a job can use in the simulation
+
+        Returns:
+        - self for method chaining
+        """
+        self.hourly_jobs = {}
+
+        for period_key, aggregated_jobs in self.aggregated_jobs.items():
+            if aggregated_jobs:
+                self.hourly_jobs[period_key] = self.convert_to_hourly_jobs(aggregated_jobs, cores_per_node, max_nodes_per_job)
+            else:
+                self.hourly_jobs[period_key] = []
+
+        return self
+
+    def sample_hourly(self, n=1, wrap=True):
+        """
+        Sample n time periods and return comprehensive data for each period.
+
+        Parameters:
+        - n: Number of time periods to sample
+        - wrap: Whether to wrap around to the beginning when reaching the end
+
+        Returns:
+        - Dictionary mapping period keys to dictionaries containing:
+        - 'raw_jobs': List of raw jobs
+        - 'aggregated_jobs': List of aggregated jobs
+        - 'hourly_jobs': List of hourly jobs
+        """
+        if not hasattr(self, 'hourly_jobs') or not self.hourly_jobs:
+            raise ValueError("Hourly jobs not precalculated. Call precalculate_hourly_jobs first.")
+
+        # Sample the periods
+        sample_periods = self.sample(n, wrap)
+
+        # Build comprehensive results
+        results = {}
+        for period_key in sample_periods:
+            results[period_key] = {
+                'raw_jobs': self.jobs.get(period_key, []),
+                'aggregated_jobs': self.aggregated_jobs.get(period_key, []),
+                'hourly_jobs': self.hourly_jobs.get(period_key, [])
+            }
+
+        return results
+
+    def sample_one_hourly(self, wrap=True):
+        """
+        Sample one time period and return comprehensive data for each period.
+
+        Parameters:
+        - wrap: Whether to wrap around to the beginning when reaching the end
+
+        Returns:
+        - Dictionary containing:
+        - 'raw_jobs': List of raw jobs
+        - 'aggregated_jobs': List of aggregated jobs
+        - 'hourly_jobs': List of hourly jobs
+        """
+        if not hasattr(self, 'hourly_jobs') or not self.hourly_jobs:
+            raise ValueError("Hourly jobs not precalculated. Call precalculate_hourly_jobs first.")
+
+        # Sample the periods
+        sample_periods = self.sample(1, wrap)
+
+        # Build comprehensive results
+        results = {}
+        for period_key in sample_periods:
+            results = {
+                'raw_jobs': self.jobs.get(period_key, []),
+                'aggregated_jobs': self.aggregated_jobs.get(period_key, []),
+                'hourly_jobs': self.hourly_jobs.get(period_key, [])
+            }
+
+        return results
 
 jobs_sampler = DurationSampler()

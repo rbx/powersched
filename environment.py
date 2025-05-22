@@ -15,12 +15,12 @@ init()  # Initialize colorama
 
 WEEK_HOURS = 168
 
-MAX_NODES = 100  # Maximum number of nodes
-MAX_QUEUE_SIZE = 100  # Maximum number of jobs in the queue
-MAX_CHANGE = 100
-MAX_JOB_DURATION = 24 # maximum job runtime
+MAX_NODES = 335  # Maximum number of nodes
+MAX_QUEUE_SIZE = 1000  # Maximum number of jobs in the queue
+MAX_CHANGE = MAX_NODES
+MAX_JOB_DURATION = 170 # maximum job runtime in hours
 MAX_JOB_AGE = WEEK_HOURS # job waits maximum a week
-MAX_NEW_JOBS_PER_HOUR = 10
+MAX_NEW_JOBS_PER_HOUR = 1500
 
 COST_IDLE = 150 # Watts
 COST_USED = 450 # Watts
@@ -123,11 +123,15 @@ class ComputeClusterEnv(gym.Env):
         if self.external_durations:
             durations_sampler.init(self.external_durations)
 
-        self.jobs = None
         if self.external_jobs:
             print(f"Loading jobs from {self.external_jobs}")
-            self.jobs = jobs_sampler.get_jobs_per_hour(self.external_jobs)
-            print(f"Loaded jobs for {len(self.jobs)} hours")
+            jobs_sampler.parse_jobs(self.external_jobs, 60)
+            print(f"Parsed jobs for {len(jobs_sampler.jobs)} hours")
+            print(f"Parsed aggregated jobs for {len(jobs_sampler.aggregated_jobs)} hours")
+            jobs_sampler.precalculate_hourly_jobs(CORES_PER_NODE, MAX_NODES_PER_JOB)
+            print(f"Max jobs per hour: {jobs_sampler.max_new_jobs_per_hour}")
+            print(f"Max job duration: {jobs_sampler.max_job_duration}")
+            print(f"Parsed hourly jobs for {len(jobs_sampler.hourly_jobs)} hours")
 
         self.current_step = 0
         self.current_episode = 0
@@ -175,7 +179,7 @@ class ComputeClusterEnv(gym.Env):
             # nodes: [-1: off, 0: idle, >0: booked for n hours]
             'nodes': spaces.Box(
                 low=-1,
-                high=MAX_JOB_DURATION, # 24h max
+                high=MAX_JOB_DURATION,
                 shape=(MAX_NODES,),  # Correct shape to (100,)
                 dtype=np.int32
             ),
@@ -259,25 +263,29 @@ class ComputeClusterEnv(gym.Env):
         self.env_print(f"{len(completed_jobs)} jobs completed: {' '.join([str(job_id) for job_id in completed_jobs]) if len(completed_jobs) > 0 else '[]'}")
 
         # Update job queue with new jobs. If queue is full, do nothing
-        new_jobs_count = np.random.randint(0, MAX_NEW_JOBS_PER_HOUR + 1)
         new_jobs_durations = []
         new_jobs_nodes = []
         new_jobs_cores = []
-        if self.external_durations:
-            new_jobs_durations = durations_sampler.sample(new_jobs_count)
+        new_jobs_count = 0
+
+        if self.external_jobs:
+            jobs = jobs_sampler.sample_one_hourly(wrap=True)['hourly_jobs']
+            if len(jobs) > 0:
+                for job in jobs:
+                    new_jobs_count += 1
+                    new_jobs_durations.append(job['duration_hours'])
+                    new_jobs_nodes.append(job['nnodes'])
+                    new_jobs_cores.append(job['cores_per_node'])
         else:
-            new_jobs_durations = np.random.randint(1, MAX_JOB_DURATION + 1, size=new_jobs_count)
-
-        # if self.jobs:
-        #     for hour, jobs in self.jobs.items():
-        #         # for i, job in enumerate(jobs):
-        #             # print(f"  Job {i+1}: Nodes={job['nnodes']}, Cores per node={job['cores_per_node']}, Duration={job['duration_hours']} hours")
-        #         print()
-
-        # Generate random node and core requirements
-        for _ in range(new_jobs_count):
-            new_jobs_nodes.append(np.random.randint(MIN_NODES_PER_JOB, MAX_NODES_PER_JOB + 1))
-            new_jobs_cores.append(np.random.randint(MIN_CORES_PER_JOB, CORES_PER_NODE + 1))
+            new_jobs_count = np.random.randint(0, MAX_NEW_JOBS_PER_HOUR + 1)
+            if self.external_durations:
+                new_jobs_durations = durations_sampler.sample(new_jobs_count)
+            else:
+                new_jobs_durations = np.random.randint(1, MAX_JOB_DURATION + 1, size=new_jobs_count)
+            # Generate random node and core requirements
+            for _ in range(new_jobs_count):
+                new_jobs_nodes.append(np.random.randint(MIN_NODES_PER_JOB, MAX_NODES_PER_JOB + 1))
+                new_jobs_cores.append(np.random.randint(MIN_CORES_PER_JOB, CORES_PER_NODE + 1))
 
         new_jobs = self.add_new_jobs(job_queue_2d, new_jobs_count, new_jobs_durations, new_jobs_nodes, new_jobs_cores)
 

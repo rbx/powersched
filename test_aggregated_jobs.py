@@ -10,16 +10,23 @@ def main():
     parser.add_argument('--num-samples', type=int, default=1, help='Number of samples to take from the job data')
     args = parser.parse_args()
 
+    # Parse the jobs file - this precalculates aggregations
     jobs_sampler.parse_jobs(args.file_path, args.bin_minutes)
 
-    sampled_data = jobs_sampler.sample_aggregated(args.num_samples, wrap=True)
-    sample_periods = list(sampled_data.keys())
+    # Precalculate hourly jobs conversions
+    jobs_sampler.precalculate_hourly_jobs(args.cores_per_node, args.max_nodes_per_job)
 
-    print(f"Sampled {args.num_samples} periods: {sample_periods}")
+    # Get comprehensive data for sampled periods
+    sampled_data = jobs_sampler.sample_hourly(args.num_samples, wrap=True)
+    sampled_periods = list(sampled_data.keys())
 
-    for period in sample_periods:
-        raw_jobs = jobs_sampler.jobs[period]
-        aggregated_jobs = sampled_data[period]  # From precalculated data
+    print(f"Sampled {args.num_samples} periods: {sampled_periods}")
+
+    for period in sampled_periods:
+        period_data = sampled_data[period]
+        raw_jobs = period_data['raw_jobs']
+        aggregated_jobs = period_data['aggregated_jobs']
+        hourly_jobs = period_data['hourly_jobs']
 
         print(f"===== Period: {period}: raw jobs: {len(raw_jobs)} =====")
 
@@ -42,13 +49,14 @@ def main():
         for i, job in enumerate(aggregated_jobs[:5]):
             print(f"    Type {i+1}: {job['count']} jobs with {job['nnodes']} nodes, {job['cores_per_node']} cores/node, {job['duration_minutes']} minutes each. Total core-minutes: {job['total_core_minutes']}")
 
-        # Convert to hourly simulation jobs
-        hourly_jobs = jobs_sampler.convert_to_hourly_jobs(aggregated_jobs, args.cores_per_node, args.max_nodes_per_job)
-
+        # Show the precalculated hourly jobs
         top_hourly = min(5, len(hourly_jobs))
         print(f"  Converted to hourly simulation jobs (Top {top_hourly} out of {len(hourly_jobs)}):")
         for i, job in enumerate(hourly_jobs[:5]):
             print(f"    Job {i+1}: {job['nnodes']} nodes, {job['cores_per_node']} cores/node, {job['duration_hours']} hours (represents {job['original_job_count']} original jobs)")
+
+        print(f"Max jobs per hour: {jobs_sampler.max_new_jobs_per_hour}")
+        print(f"Max job duration: {jobs_sampler.max_job_duration}")
 
 if __name__ == "__main__":
     main()
