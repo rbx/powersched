@@ -148,14 +148,11 @@ class ComputeClusterEnv(gym.Env):
         print(f"Price Statistics: {self.prices.get_price_stats()}")
         # self.prices.plot_price_histogram(use_original=False)
 
-        min_cost = self.power_cost(0, MAX_NODES, self.prices.MAX_PRICE)
-        max_cost = self.power_cost(MAX_NODES, 0, self.prices.MIN_PRICE)
+        cost_for_min_efficiency = self.power_cost(0, MAX_NODES, self.prices.MAX_PRICE)
+        cost_for_max_efficiency = self.power_cost(MAX_NODES, 0, self.prices.MIN_PRICE)
 
-        self.min_efficiency_reward = 0  # Worst case: nodes running but no work being done
-        efficiency_with_work = MAX_NODES / (max_cost + 1e-6)
-        self.max_efficiency_reward = max(1.0, efficiency_with_work)
-        # self.min_efficiency_reward = self.reward_efficiency(0, min_cost)
-        # self.max_efficiency_reward = self.reward_efficiency(MAX_NODES, max_cost)
+        self.min_efficiency_reward = self.reward_efficiency(0, cost_for_min_efficiency) # Worst case: nodes running but no work being done
+        self.max_efficiency_reward = max(1.0, self.reward_efficiency(MAX_NODES, cost_for_max_efficiency)) # Best case: all nodes running and doing work
 
         self.min_price_reward = 0
         # self.min_price_reward = self.reward_price(self.prices.MAX_PRICE, self.prices.MIN_PRICE, MAX_NEW_JOBS_PER_HOUR)  # Worst case: highest current price, lowest future price, max jobs processed
